@@ -19,6 +19,15 @@ export type PageLike = {
    * it was handed by its leading marker comment.
    */
   evaluate(script: string): Promise<unknown>;
+  /**
+   * Real pointer events. Some controls (the invoice chart) decide what was
+   * clicked from the pointer position, so a synthetic element.click() does
+   * nothing there; Playwright's mouse does what a hand would.
+   */
+  mouse?: {
+    move(x: number, y: number): Promise<void>;
+    click(x: number, y: number): Promise<void>;
+  };
 };
 
 export type RouteLike = {

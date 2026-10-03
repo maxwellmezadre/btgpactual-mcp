@@ -81,7 +81,8 @@ export type InvoiceTransaction = {
   kind: CardTransactionKind;
 };
 
-export type InvoiceMonth = { month: string; status: InvoiceStatus; statusLabel: string };
+/** One column of the invoice chart. `label` is the month text exactly as shown, used to click it. */
+export type InvoiceMonth = { month: string; status: InvoiceStatus; statusLabel: string; label: string };
 
 export type HolderTotal = { holder: Holder; holderName: string | null; totalCents: number | null };
 
@@ -95,6 +96,14 @@ export type CardsScreen = {
   } | null;
   /** Invoice timeline (months and statuses); per-month totals live in the chart SVG, not the DOM. */
   months: InvoiceMonth[];
+  /**
+   * The month the transaction list and the per-holder totals belong to. Known
+   * for sure only after the sync clicked that month (the chart label carries
+   * `data-btg-selected`); otherwise the selected invoice header's month.
+   */
+  timelineMonth: string | null;
+  /** True when `timelineMonth` came from a confirmed click, not the default view. */
+  timelineConfirmed: boolean;
   holderTotals: HolderTotal[];
   transactions: InvoiceTransaction[];
   warnings: string[];

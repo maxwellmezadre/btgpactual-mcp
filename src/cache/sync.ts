@@ -1,23 +1,26 @@
-import { CARDS, STATEMENT } from "../btg/banking/selectors.js";
+import { MONTH_ANNOTATE, PAGER_NEXT_DONE, PAGER_NEXT_LOCATE, monthDoneScript, monthLocateScript } from "../btg/banking/actions.js";
 import { parseCardsScreen } from "../btg/banking/cards.js";
+import { CARDS, STATEMENT } from "../btg/banking/selectors.js";
 import { parseStatementScreen } from "../btg/banking/statement.js";
 import { parseBalanceDetail } from "../btg/investments/balance.js";
 import { parseHome } from "../btg/investments/home.js";
 import { parseAllocation } from "../btg/investments/position.js";
 import { parseFutureTransactions, parseInvestmentStatement } from "../btg/investments/statement.js";
-import { AGGREGATOR, BALANCE_DETAIL, FUTURE, HOME, accountStatement, allocationSummary } from "../btg/paths.js";
+import { BALANCE_DETAIL, FUTURE, HOME, accountStatement, allocationSummary } from "../btg/paths.js";
 import type { Ctx } from "../context.js";
-import { AuthError, CaptchaError } from "../core/errors.js";
-import type { CacheRepo, SnapshotKind } from "./repo.js";
+import { AuthError, CaptchaError, ParseError } from "../core/errors.js";
+import type { InvoiceMonth } from "../domain/types.js";
+import type { BaseSnapshotKind, CacheRepo, SnapshotKind } from "./repo.js";
 
 // One sync = the investments channel (a handful of JSON replays, seconds) plus
-// the banking screens (two renders, tens of seconds). Each source has ONE
-// ingest function, used both live and by `--reparse`, which re-runs the
-// parsers over the stored raw payloads with no network at all.
+// the banking screens: the cards screen clicked month by month (every invoice
+// visible on its chart) and the statement paged to the end. Each source has ONE
+// ingest function, used both live and by `--reparse`, which re-runs the parsers
+// over the stored raw payloads with no network at all.
 
 export type SyncParts = "all" | "investments" | "banking";
 export type SyncOptions = { parts?: SyncParts; reparse?: boolean; periodDays?: number };
-export type StepResult = { step: SnapshotKind; ok: boolean; detail?: string; error?: string };
+export type StepResult = { step: string; ok: boolean; detail?: string; error?: string };
 export type SyncReport = {
   mode: "live" | "reparse";
   steps: StepResult[];
@@ -25,11 +28,12 @@ export type SyncReport = {
   stats: ReturnType<CacheRepo["stats"]>;
 };
 
-void AGGREGATOR; // open finance comes inside the home hub; the POST aggregator is not needed
+/** 30 pages x 10 rows: far beyond the default statement period. */
+export const MAX_STATEMENT_PAGES = 30;
 
 type Ingest = (repo: CacheRepo, raw: string, now: Date) => string;
 
-const INGEST: Record<SnapshotKind, Ingest> = {
+const JSON_INGEST: Record<Exclude<BaseSnapshotKind, "cards_screen" | "statement_page">, Ingest> = {
   home: (repo, raw) => {
     const data = parseHome(JSON.parse(raw));
     repo.putSnapshot("home", data, raw);
@@ -54,31 +58,89 @@ const INGEST: Record<SnapshotKind, Ingest> = {
     repo.putSnapshot("future", data, raw);
     return `${data.entries.length} lançamento(s) futuro(s)`;
   },
-  cards_screen: (repo, html, now) => {
-    const screen = parseCardsScreen(html, now);
-    repo.putSnapshot("cards_screen", screen, html);
-    repo.upsertInvoices(screen.months, screen.invoice);
-    if (screen.invoice?.month) repo.replaceInvoiceLines(screen.invoice.month, screen.transactions);
-    return `fatura ${screen.invoice?.month ?? "?"}: ${screen.transactions.length} lançamento(s)`;
-  },
-  statement_page: (repo, html, now) => {
-    const screen = parseStatementScreen(html, now);
-    repo.putSnapshot("statement_page", screen, html);
-    const added = repo.upsertStatementEntries(screen.entries);
-    return `${screen.entries.length} linha(s) do extrato (${added} nova(s)), ${screen.page?.total ?? "?"} no período`;
-  },
 };
+
+/** Default cards view: the closed invoice header and the chart's months. Lines come from the clicks. */
+function ingestCardsScreen(repo: CacheRepo, html: string, now: Date): InvoiceMonth[] {
+  const screen = parseCardsScreen(html, now);
+  repo.putSnapshot("cards_screen", screen, html);
+  repo.upsertInvoices(screen.months, screen.invoice);
+  return screen.months;
+}
+
+/**
+ * One invoice month, after the sync clicked it. The list is accepted only when
+ * the chart confirms that exact month is selected: lines are never filed
+ * under the wrong invoice.
+ */
+function ingestCardsMonth(repo: CacheRepo, html: string, now: Date, month: string): string {
+  const screen = parseCardsScreen(html, now);
+  if (!screen.timelineConfirmed || screen.timelineMonth !== month) {
+    throw new ParseError(`A tela mostrou a fatura ${screen.timelineMonth ?? "?"} em vez de ${month}.`);
+  }
+  repo.putSnapshot(`cards_month:${month}`, screen, html);
+  repo.replaceInvoiceLines(month, screen.transactions);
+  repo.replaceInvoiceHolders(month, screen.holderTotals);
+  return `${screen.transactions.length} lançamento(s)`;
+}
+
+function ingestStatementPage(repo: CacheRepo, html: string, now: Date, page: number) {
+  const screen = parseStatementScreen(html, now);
+  repo.putSnapshot(`statement_page:${page}`, screen, html);
+  if (page === 1) repo.putSnapshot("statement_page", screen, html);
+  const added = repo.upsertStatementEntries(screen.entries);
+  return { screen, added };
+}
 
 /** A session or challenge problem stops the whole sync; anything else only that step. */
 const fatal = (error: unknown) => error instanceof AuthError || error instanceof CaptchaError;
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-async function step(steps: StepResult[], kind: SnapshotKind, run: () => Promise<string>): Promise<void> {
+async function step(steps: StepResult[], name: string, run: () => Promise<string>): Promise<void> {
   try {
-    steps.push({ step: kind, ok: true, detail: await run() });
+    steps.push({ step: name, ok: true, detail: await run() });
   } catch (error) {
     if (fatal(error)) throw error;
-    steps.push({ step: kind, ok: false, error: message(error) });
+    steps.push({ step: name, ok: false, error: message(error) });
+  }
+}
+
+/**
+ * Click order. On load the list shows the closed invoice, so clicking it first
+ * would change nothing and could not be confirmed: start with any other month,
+ * then the closed one, then the rest.
+ */
+export function clickOrder(months: InvoiceMonth[], closedMonth: string | null): InvoiceMonth[] {
+  const closed = months.find((m) => m.month === closedMonth);
+  const others = months.filter((m) => m.month !== closedMonth);
+  if (!closed || others.length === 0) return months;
+  return [others[0] as InvoiceMonth, closed, ...others.slice(1)];
+}
+
+function reparse(repo: CacheRepo, steps: StepResult[]): void {
+  const run = (name: string, fn: () => string) => {
+    try {
+      steps.push({ step: name, ok: true, detail: fn() });
+    } catch (error) {
+      steps.push({ step: name, ok: false, error: message(error) });
+    }
+  };
+  for (const kind of Object.keys(JSON_INGEST) as Array<keyof typeof JSON_INGEST>) {
+    const snap = repo.getSnapshot<unknown>(kind);
+    if (snap?.raw) run(kind, () => JSON_INGEST[kind](repo, snap.raw as string, new Date(snap.capturedAt)));
+  }
+  // Yearless dates resolve against the moment of capture, not today.
+  const cards = repo.getSnapshot<unknown>("cards_screen");
+  if (cards?.raw) run("cards_screen", () => `${ingestCardsScreen(repo, cards.raw as string, new Date(cards.capturedAt)).length} mês(es)`);
+  for (const kind of repo.listSnapshotKinds("cards_month:")) {
+    const snap = repo.getSnapshot<unknown>(kind);
+    const month = kind.slice("cards_month:".length);
+    if (snap?.raw) run(kind, () => ingestCardsMonth(repo, snap.raw as string, new Date(snap.capturedAt), month));
+  }
+  for (const kind of repo.listSnapshotKinds("statement_page:")) {
+    const snap = repo.getSnapshot<unknown>(kind);
+    const page = Number(kind.slice("statement_page:".length));
+    if (snap?.raw) run(kind, () => `${ingestStatementPage(repo, snap.raw as string, new Date(snap.capturedAt), page).screen.entries.length} linha(s)`);
   }
 }
 
@@ -87,13 +149,7 @@ export async function runSync(ctx: Ctx, opts: SyncOptions = {}): Promise<SyncRep
   const steps: StepResult[] = [];
 
   if (opts.reparse) {
-    for (const kind of Object.keys(INGEST) as SnapshotKind[]) {
-      const snapshot = repo.getSnapshot<unknown>(kind);
-      if (!snapshot?.raw) continue;
-      const raw = snapshot.raw;
-      // Yearless dates resolve against the moment of capture, not today.
-      await step(steps, kind, async () => INGEST[kind](repo, raw, new Date(snapshot.capturedAt)));
-    }
+    reparse(repo, steps);
     return { mode: "reparse", steps, account: ctx.config.account ?? null, stats: repo.stats() };
   }
 
@@ -102,8 +158,8 @@ export async function runSync(ctx: Ctx, opts: SyncOptions = {}): Promise<SyncRep
   const now = () => new Date(ctx.now());
 
   if (parts !== "banking") {
-    const json = async (kind: SnapshotKind, path: string) =>
-      step(steps, kind, async () => INGEST[kind](repo, (await client.apiGet(path)).body, now()));
+    const json = async (kind: keyof typeof JSON_INGEST, path: string) =>
+      step(steps, kind, async () => JSON_INGEST[kind](repo, (await client.apiGet(path)).body, now()));
     await json("home", HOME);
     await json("balance_detail", BALANCE_DETAIL);
     const account = client.account();
@@ -114,16 +170,56 @@ export async function runSync(ctx: Ctx, opts: SyncOptions = {}): Promise<SyncRep
   }
 
   if (parts !== "investments") {
+    let months: InvoiceMonth[] = [];
+    let closedMonth: string | null = null;
     await step(steps, "cards_screen", async () => {
       const page = await client.render(CARDS.route, { readySelector: CARDS.ready, settleMs: 1500 });
-      return INGEST.cards_screen(repo, page.html, now());
+      months = ingestCardsScreen(repo, page.html, now());
+      closedMonth = repo.getSnapshot<{ invoice: { month: string | null } | null }>("cards_screen")?.data.invoice?.month ?? null;
+      return `${months.length} fatura(s) no gráfico`;
     });
+    for (const m of clickOrder(months, closedMonth)) {
+      await step(steps, `cards_month:${m.month}`, async () => {
+        const page = await client.interact({
+          locate: monthLocateScript(m.label),
+          done: monthDoneScript(m.label),
+          annotate: MONTH_ANNOTATE,
+          settleMs: 500,
+          label: `a fatura de ${m.label}`,
+        });
+        return `${m.statusLabel}: ${ingestCardsMonth(repo, page.html, now(), m.month)}`;
+      });
+    }
+
     await step(steps, "statement_page", async () => {
-      const page = await client.render(STATEMENT.route, { readySelector: STATEMENT.ready, settleMs: 1000 });
-      return INGEST.statement_page(repo, page.html, now());
+      const first = await client.render(STATEMENT.route, { readySelector: STATEMENT.ready, settleMs: 1000 });
+      let { screen, added } = ingestStatementPage(repo, first.html, now(), 1);
+      let read = screen.entries.length;
+      let page = 1;
+      while (screen.page && screen.page.to < screen.page.total && page < MAX_STATEMENT_PAGES) {
+        try {
+          const next = await client.interact({
+            locate: PAGER_NEXT_LOCATE,
+            done: PAGER_NEXT_DONE,
+            settleMs: 300,
+            label: "a próxima página do extrato",
+          });
+          page += 1;
+          const result = ingestStatementPage(repo, next.html, now(), page);
+          screen = result.screen;
+          added += result.added;
+          read += screen.entries.length;
+        } catch (error) {
+          if (fatal(error)) throw error;
+          throw new Error(`parou na página ${page + 1} (${read} linha(s) já salvas): ${message(error)}`);
+        }
+      }
+      return `${read} linha(s) em ${page} página(s) (${added} nova(s)), ${screen.page?.total ?? "?"} no período`;
     });
   }
 
   if (steps.some((s) => s.ok)) repo.setMeta("sync.last_completed_at", new Date(ctx.now()).toISOString());
   return { mode: "live", steps, account: client.account(), stats: repo.stats() };
 }
+
+export type { SnapshotKind };

@@ -15,10 +15,10 @@ describe("cards screen", () => {
 
   test("invoice timeline months resolve to the nearest year, explicit year wins", () => {
     expect(screen.months).toEqual([
-      { month: "2026-09", status: "paid", statusLabel: "Paga" },
-      { month: "2026-10", status: "closed", statusLabel: "Fechada" },
-      { month: "2026-11", status: "open", statusLabel: "Aberta" },
-      { month: "2027-01", status: "future", statusLabel: "Futura" },
+      { month: "2026-09", status: "paid", statusLabel: "Paga", label: "Set" },
+      { month: "2026-10", status: "closed", statusLabel: "Fechada", label: "Out" },
+      { month: "2026-11", status: "open", statusLabel: "Aberta", label: "Nov" },
+      { month: "2027-01", status: "future", statusLabel: "Futura", label: "Jan/2027" },
     ]);
   });
 
@@ -60,6 +60,19 @@ describe("cards screen", () => {
     ]);
     expect(screen.transactions.every((t) => t.invoiceMonth === "2026-10")).toBe(true);
     expect(screen.warnings).toEqual([]);
+  });
+
+  test("default view: the list is attributed to the header month, unconfirmed", () => {
+    expect(screen.timelineMonth).toBe("2026-10");
+    expect(screen.timelineConfirmed).toBe(false);
+  });
+
+  test("after a confirmed click the list belongs to the clicked month, not the header", () => {
+    const clicked = parseCardsScreen(html.replace("<span><div><span>Nov</span>", '<span data-btg-selected="true"><div><span>Nov</span>'), now);
+    expect(clicked.timelineMonth).toBe("2026-11");
+    expect(clicked.timelineConfirmed).toBe(true);
+    expect(clicked.invoice?.month).toBe("2026-10"); // the header card never moves
+    expect(clicked.transactions.every((t) => t.invoiceMonth === "2026-11")).toBe(true);
   });
 
   test("kindOf: cancellation beats purchase wording", () => {

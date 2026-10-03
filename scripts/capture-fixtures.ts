@@ -73,7 +73,8 @@ async function main(): Promise<void> {
           index[item.name] = file;
         }
       } else {
-        const res = await client.render(item.path, { readySelector: item.selector ?? "body" });
+        // Rows paint seconds after the screen shell; give them time before extracting.
+        const res = await client.render(item.path, { readySelector: item.selector ?? "body", settleMs: 8000 });
         console.error(`[banking] ${item.name}: ${res.html.length} bytes (${res.title})`);
         if (write) {
           const file = `banking/${item.name}.html`;

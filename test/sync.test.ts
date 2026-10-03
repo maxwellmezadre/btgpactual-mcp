@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runSync } from "../src/cache/sync.js";
+import { clickOrder, runSync } from "../src/cache/sync.js";
 import { AuthError, BankingRenderError } from "../src/core/errors.js";
 import { HTML_BY_ROUTE, wireSync as wire } from "./wire.js";
 
@@ -14,10 +14,16 @@ describe("sync", () => {
       ["investment_statement", true],
       ["future", true],
       ["cards_screen", true],
+      ["cards_month:2026-09", true],
+      ["cards_month:2026-10", true],
+      ["cards_month:2026-11", true],
+      ["cards_month:2027-01", true],
       ["statement_page", true],
     ]);
     expect(calls.render).toEqual(["/cartoes", "/conta-corrente"]);
-    expect(report.stats).toMatchObject({ invoices: 4, invoiceLines: 7, statementEntries: 4 });
+    // The closed month (Out) is never clicked first: its list is already on screen.
+    expect(calls.interact).toEqual(["a fatura de Set", "a fatura de Out", "a fatura de Nov", "a fatura de Jan/2027"]);
+    expect(report.stats).toMatchObject({ invoices: 4, invoicesWithLines: 1, invoiceLines: 7, statementEntries: 4 });
     expect(ctx.cache().getSnapshot("allocation")?.data).toMatchObject({ totalCents: 350050 });
     expect(ctx.cache().getMeta("sync.last_completed_at")).toBe("2026-10-02T12:00:00.000Z");
   });
@@ -48,6 +54,23 @@ describe("sync", () => {
     expect(report.steps.find((s) => s.step === "cards_screen")).toMatchObject({ ok: true });
   });
 
+  test("a click that lands on another month is refused, never filed under the wrong invoice", async () => {
+    const { ctx } = wire({}, { wrongMonth: { Nov: "Set" } });
+    const report = await runSync(ctx);
+    const nov = report.steps.find((s) => s.step === "cards_month:2026-11");
+    expect(nov).toMatchObject({ ok: false });
+    expect(nov?.error).toContain("em vez de 2026-11");
+    expect(ctx.cache().listInvoiceLines({ month: "2026-11" }).total).toBe(0);
+  });
+
+  test("the statement is paged to the end", async () => {
+    const { ctx, calls } = wire({}, { statementPages: 2 });
+    const report = await runSync(ctx);
+    expect(calls.interact.filter((l) => l.includes("próxima página"))).toHaveLength(1);
+    expect(report.steps.find((s) => s.step === "statement_page")?.detail).toContain("em 2 página(s)");
+    expect(report.stats.statementEntries).toBe(8);
+  });
+
   test("an expired session stops the whole sync", async () => {
     const { ctx } = wire({
       apiGet: async () => {
@@ -62,10 +85,12 @@ describe("sync", () => {
     await runSync(ctx);
     calls.api.length = 0;
     calls.render.length = 0;
+    calls.interact.length = 0;
     const report = await runSync(ctx, { reparse: true });
     expect(report.mode).toBe("reparse");
     expect(report.steps.every((s) => s.ok)).toBe(true);
-    expect(calls).toEqual({ api: [], render: [] });
+    expect(report.steps.map((s) => s.step)).toContain("cards_month:2026-10");
+    expect(calls).toEqual({ api: [], render: [], interact: [] });
     expect(report.stats).toMatchObject({ invoiceLines: 7, statementEntries: 4 });
   });
 });
@@ -101,8 +126,21 @@ describe("cache queries", () => {
   test("invoices keep a known total when a later sync only sees the status", async () => {
     const { ctx } = wire();
     await runSync(ctx);
-    ctx.cache().upsertInvoices([{ month: "2026-10", status: "paid", statusLabel: "Paga" }], null);
+    ctx.cache().upsertInvoices([{ month: "2026-10", status: "paid", statusLabel: "Paga", label: "Out" }], null);
     const october = ctx.cache().listInvoices().find((i) => i.month === "2026-10");
     expect(october).toMatchObject({ status: "paid", total_cents: 25000 });
+  });
+});
+
+describe("click order", () => {
+  const m = (month: string, label: string) => ({ month, label, status: "paid" as const, statusLabel: "Paga" });
+  test("the closed month goes second, never first", () => {
+    const months = [m("2026-09", "Set"), m("2026-10", "Out"), m("2026-11", "Nov")];
+    expect(clickOrder(months, "2026-10").map((x) => x.label)).toEqual(["Set", "Out", "Nov"]);
+    expect(clickOrder([m("2026-10", "Out"), m("2026-11", "Nov")], "2026-10").map((x) => x.label)).toEqual(["Nov", "Out"]);
+  });
+  test("a single month or an unknown closed month keeps the chart order", () => {
+    expect(clickOrder([m("2026-10", "Out")], "2026-10").map((x) => x.label)).toEqual(["Out"]);
+    expect(clickOrder([m("2026-09", "Set")], null).map((x) => x.label)).toEqual(["Set"]);
   });
 });

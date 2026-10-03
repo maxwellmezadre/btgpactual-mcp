@@ -24,9 +24,44 @@ export const HTML_BY_ROUTE: Record<string, string> = {
   "/conta-corrente": fixture("banking/conta-corrente.html"),
 };
 
-type Calls = { api: string[]; render: string[] };
+type Calls = { api: string[]; render: string[]; interact: string[] };
 
-function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}): BrowserClient {
+/** The cards screen after clicking `label`: that label marked; only "Out" has lines. */
+export function cardsAfterClick(label: string, mark = label): string {
+  let html = (HTML_BY_ROUTE["/cartoes"] as string).replace(
+    `<span><div><span>${mark}</span>`,
+    `<span data-btg-selected="true"><div><span>${mark}</span>`,
+  );
+  if (label !== "Out") {
+    html = html.replace(
+      /<div class="timeline-container">[\s\S]*?<\/div>\s*<\/section><\/app-timeline-card>/,
+      '<div class="timeline-container"></div></section></app-timeline-card>',
+    );
+  }
+  return html;
+}
+
+/** Page 1 claims 6 items; page 2 brings the 2 rows that were missing. */
+export function statementPages(): { first: string; second: string } {
+  const base = HTML_BY_ROUTE["/conta-corrente"] as string;
+  const first = base.replace("1 - 4 de 4 itens", "1 - 4 de 6 itens");
+  const second = base
+    .replace("1 - 4 de 4 itens", "5 - 6 de 6 itens")
+    .replace(/LOJA OMEGA/g, "LOJA SIGMA")
+    .replace(/- R\$ 25,50/g, "- R$ 7,00")
+    .replace("Pix recebido", "Pix devolvido")
+    .replace("Pix enviado via assistente virtual no WhatsApp", "Pagamento de boleto");
+  return { first, second };
+}
+
+export type FakeOptions = {
+  /** Serve a two-page statement. */
+  statementPages?: 1 | 2;
+  /** Click on month X but the screen confirms month Y. */
+  wrongMonth?: Record<string, string>;
+};
+
+function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}, opts: FakeOptions = {}): BrowserClient {
   return {
     apiGet: async (path) => {
       calls.api.push(path);
@@ -36,7 +71,15 @@ function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}): BrowserCli
     },
     render: async (path) => {
       calls.render.push(path);
+      if (path === "/conta-corrente" && opts.statementPages === 2) return { url: path, title: "", html: statementPages().first };
       return { url: path, title: "", html: HTML_BY_ROUTE[path] ?? "" };
+    },
+    interact: async (options) => {
+      calls.interact.push(options.label);
+      const month = /^a fatura de (.+)$/.exec(options.label)?.[1];
+      if (month) return { url: "/cartoes", title: "", html: cardsAfterClick(month, opts.wrongMonth?.[month] ?? month) };
+      if (options.label === "a próxima página do extrato") return { url: "/conta-corrente", title: "", html: statementPages().second };
+      throw new Error(`unexpected interact ${options.label}`);
     },
     account: () => "000000001",
     state: () => ({ tripped: false, calls: 0, lastCallAt: null }),
@@ -46,15 +89,15 @@ function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}): BrowserCli
   };
 }
 
-export function wireSync(over: Partial<BrowserClient> = {}) {
-  const calls: Calls = { api: [], render: [] };
+export function wireSync(over: Partial<BrowserClient> = {}, opts: FakeOptions = {}) {
+  const calls: Calls = { api: [], render: [], interact: [] };
   const exportDir = mkdtempSync(join(tmpdir(), "btg-export-"));
   const ctx = createContext(loadConfig({ BTG_CONFIG_DIR: "/tmp/btg-sync-test", BTG_EXPORT_DIR: exportDir }), {
     db: openCache(":memory:"),
     session: createMemorySessionStore(null),
     log: silentLogger(),
     now: () => Date.UTC(2026, 9, 2, 12),
-    client: fakeClient(calls, over),
+    client: fakeClient(calls, over, opts),
   });
   return { ctx, calls, exportDir };
 }

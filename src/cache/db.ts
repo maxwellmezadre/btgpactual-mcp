@@ -8,7 +8,7 @@ import { openDatabase } from "../core/sqlite.js";
 //   - every source keeps its raw payload (JSON or rendered HTML), so a fixed
 //     parser re-runs over it with zero network (`sync --reparse`).
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Ordered and append-only: a released migration is never edited. */
 export const MIGRATIONS: string[] = [
@@ -66,6 +66,20 @@ export const MIGRATIONS: string[] = [
     last_seen_at  TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS statement_entries_date ON statement_entries(date);
+  `,
+  `
+  -- "Gastos por cartão" of each invoice month, as BTG shows it. holder_key is
+  -- the holder name (or 'titular'): a NULL in a SQLite primary key would not
+  -- stop duplicates.
+  CREATE TABLE IF NOT EXISTS invoice_holders (
+    month        TEXT NOT NULL,
+    holder_key   TEXT NOT NULL,
+    holder       TEXT NOT NULL,
+    holder_name  TEXT,
+    total_cents  INTEGER,
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (month, holder_key)
+  );
   `,
 ];
 

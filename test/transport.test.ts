@@ -150,6 +150,30 @@ describe("bridge", () => {
     expect(fake.addedCookies).toBe(1);
   });
 
+  test("interact: clicks the located point, waits for done, annotates, extracts", async () => {
+    const { bridge, fake } = wire({ done: (poll) => poll >= 2, extract: (url) => ({ url, title: "t", html: "<p>depois</p>" }) });
+    await bridge.render("/cartoes", { readySelector: ".x" });
+    const result = await bridge.interact({ locate: "/*locate*/", done: "/*done*/", annotate: "/*annotate*/", label: "mês" });
+    expect(fake.clicks).toEqual([[10, 20]]);
+    expect(fake.annotated).toBe(1);
+    expect(result.html).toBe("<p>depois</p>");
+  });
+
+  test("interact without an open screen, or a missing control, fails", async () => {
+    const { bridge } = wire({ locate: () => null });
+    await expect(bridge.interact({ locate: "/*locate*/", done: "/*done*/", label: "mês" })).rejects.toThrow(BankingRenderError);
+    await bridge.render("/cartoes", { readySelector: ".x" });
+    await expect(bridge.interact({ locate: "/*locate*/", done: "/*done*/", label: "mês" })).rejects.toThrow(/Não encontrei mês/);
+  });
+
+  test("a click that never changes the screen is a BankingRenderError, not stale data", async () => {
+    const { bridge } = wire({ done: () => false });
+    await bridge.render("/cartoes", { readySelector: ".x" });
+    await expect(bridge.interact({ locate: "/*locate*/", done: "/*done*/", label: "próximo" })).rejects.toThrow(
+      /não produziu a mudança/,
+    );
+  });
+
   test("close is idempotent", async () => {
     const { bridge, fake } = wire();
     await bridge.apiGet("/investments/api/x");

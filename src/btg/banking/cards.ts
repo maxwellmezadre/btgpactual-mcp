@@ -71,14 +71,22 @@ function parseTransactions(root: HTMLElement, invoiceMonth: string | null, now: 
   return out;
 }
 
-function parseMonths(root: HTMLElement, now: Date): InvoiceMonth[] {
+function parseMonths(root: HTMLElement, now: Date): Array<InvoiceMonth & { selected: boolean }> {
   return root.querySelectorAll(CARDS.chartLabels).flatMap((label) => {
     const spans = label.querySelectorAll("span");
     const monthLabel = text(spans[0]);
     const statusLabel = text(spans[spans.length - 1]);
     const month = monthLabel ? resolveMonth(monthLabel, now) : undefined;
-    if (!month || !statusLabel || spans.length < 2) return [];
-    return [{ month, status: invoiceStatus(statusLabel), statusLabel }];
+    if (!month || !monthLabel || !statusLabel || spans.length < 2) return [];
+    return [
+      {
+        month,
+        status: invoiceStatus(statusLabel),
+        statusLabel,
+        label: monthLabel,
+        selected: label.getAttribute(CARDS.selectedAttribute) === "true",
+      },
+    ];
   });
 }
 
@@ -120,7 +128,10 @@ export function parseCardsScreen(html: string, now: Date): CardsScreen {
       }
     : null;
 
-  const transactions = parseTransactions(root, month, now);
+  const chart = parseMonths(root, now);
+  const confirmed = chart.find((m) => m.selected)?.month ?? null;
+  const timelineMonth = confirmed ?? month;
+  const transactions = parseTransactions(root, timelineMonth, now);
   const holderTotals = parseHolderTotals(root);
   const warnings: string[] = [];
   const undated = transactions.filter((t) => t.date === null).length;
@@ -128,5 +139,13 @@ export function parseCardsScreen(html: string, now: Date): CardsScreen {
   const unpriced = transactions.filter((t) => t.amountCents === null).length;
   if (unpriced > 0) warnings.push(`${unpriced} lançamento(s) sem valor reconhecido`);
 
-  return { invoice, months: parseMonths(root, now), holderTotals, transactions, warnings };
+  return {
+    invoice,
+    months: chart.map(({ selected: _selected, ...m }) => m),
+    timelineMonth,
+    timelineConfirmed: confirmed !== null,
+    holderTotals,
+    transactions,
+    warnings,
+  };
 }

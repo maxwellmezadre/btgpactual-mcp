@@ -1,6 +1,6 @@
 import { AuthError, BankingRenderError, CaptchaError, HttpError, ParseError } from "../core/errors.js";
 import type { Logger } from "../core/logger.js";
-import type { Bridge, RenderOptions } from "./transport.js";
+import type { Bridge, InteractOptions, RenderOptions } from "./transport.js";
 import type { ApiResult, RenderResult } from "./types.js";
 
 // The single funnel to the BTG app. It enforces the anti-bot contract in ONE
@@ -28,6 +28,8 @@ export type BrowserClient = {
   apiGet(path: string): Promise<ApiResult>;
   /** Banking screen render through the same queue and breaker. */
   render(path: string, opts: RenderOptions): Promise<RenderResult>;
+  /** A click on the open screen. Never retried: clicking "next" twice skips a page. */
+  interact(opts: InteractOptions): Promise<RenderResult>;
   account(): string | null;
   state(): ClientState;
   cooldownUntil(): number | null;
@@ -141,6 +143,19 @@ export function createBrowserClient(opts: ClientOptions, deps: ClientDeps = {}):
       serial(() => {
         assertUsable();
         return attempt(path, () => bridge.render(path, options));
+      }),
+    interact: (options) =>
+      serial(async () => {
+        assertUsable();
+        await gap();
+        try {
+          const result = await bridge.interact(options);
+          calls += 1;
+          return result;
+        } catch (error) {
+          if (error instanceof CaptchaError) trip("raised during a click");
+          throw error;
+        }
       }),
     account: () => bridge.account(),
     state: () => ({ tripped, calls, lastCallAt: Number.isFinite(lastCallAt) ? lastCallAt : null }),

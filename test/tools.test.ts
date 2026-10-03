@@ -44,9 +44,10 @@ describe("read tools after a sync", () => {
     expect((await call(ctx, "account_statement", { query: "whatsapp" })).totals.count).toBe(1);
   });
 
-  test("cards_list: limit and spending per holder", async () => {
+  test("cards_list: limit and spending per holder of the open invoice", async () => {
     const r = await call(ctx, "cards_list");
     expect(r.cards[0]).toMatchObject({ limit: 10000, used: 1999.75, invoice: 1500.1 });
+    expect(r.spendingByHolder).toMatchObject({ invoiceMonth: "2026-11", invoiceStatus: "open" });
     expect(r.spendingByHolder.holders).toEqual([
       { holder: "titular", name: null, total: 300 },
       { holder: "adicional", name: "PESSOA EXEMPLO", total: 100 },
@@ -58,12 +59,16 @@ describe("read tools after a sync", () => {
     expect(r).toMatchObject({ month: "2026-10", status: "closed", total: 250 });
     expect(r.lines).toEqual({ count: 7, purchases: 400, installments: 2, refunds: 10, paymentsReceived: 1500 });
     expect(r.knownInvoices).toHaveLength(4);
+    expect(r.spendingByHolder).toEqual([
+      { holder: "titular", name: null, total: 300 },
+      { holder: "adicional", name: "PESSOA EXEMPLO", total: 100 },
+    ]);
   });
 
   test("invoice for a month whose total was never shown explains why", async () => {
     const r = await call(ctx, "invoice", { month: "2026-11" });
     expect(r.total).toBeNull();
-    expect(r.totalNote).toContain("O BTG só mostra o total");
+    expect(r.totalNote).toContain("só mostra o valor total da fatura fechada");
   });
 
   test("invoice_transactions: installments and holder filters", async () => {

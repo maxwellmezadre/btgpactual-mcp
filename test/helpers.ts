@@ -67,6 +67,9 @@ export type FakeScenario = {
   extract?: (url: string) => RenderResult;
   /** Web storage dump mirrored back on warm-up. */
   dump?: { storage: Record<string, string>; local: Record<string, string> };
+  /** Answers for interact(): where the control is, and whether the screen changed yet. */
+  locate?: () => { x: number; y: number } | null;
+  done?: (poll: number) => boolean;
 };
 
 export type FakeBrowser = {
@@ -77,6 +80,8 @@ export type FakeBrowser = {
   apiCalls: number;
   renderPolls: number;
   addedCookies: number;
+  clicks: Array<[number, number]>;
+  annotated: number;
 };
 
 /** A browser the tests can fully script, matching evaluate() by its marker. */
@@ -89,7 +94,10 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     apiCalls: 0,
     renderPolls: 0,
     addedCookies: 0,
+    clicks: [],
+    annotated: 0,
   };
+  let donePolls = 0;
   const defaultCapture: CaptureState = {
     headers: { authorization_code: "tok-abcdefgh", sessionid: "sid-abcdefgh" },
     account: "123456",
@@ -109,6 +117,12 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
       return Promise.resolve();
     },
     url: () => landed,
+    mouse: {
+      move: async () => {},
+      click: async (x: number, y: number) => {
+        fake.clicks.push([x, y]);
+      },
+    },
     evaluate: (script: string) => {
       if (script.startsWith(READ_CAPTURE_MARKER)) return Promise.resolve(readCapture());
       if (script.startsWith(API_FETCH_MARKER)) {
@@ -128,6 +142,12 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
         );
       }
       if (script === "navigator.userAgent") return Promise.resolve("Mozilla/5.0 Test");
+      if (script === "/*locate*/") return Promise.resolve(scenario.locate ? scenario.locate() : { x: 10, y: 20 });
+      if (script === "/*done*/") return Promise.resolve(scenario.done ? scenario.done(donePolls++) : true);
+      if (script === "/*annotate*/") {
+        fake.annotated += 1;
+        return Promise.resolve(undefined);
+      }
       if (script.startsWith("/*btg dump*/")) {
         return Promise.resolve(scenario.dump ?? { storage: {}, local: {} });
       }

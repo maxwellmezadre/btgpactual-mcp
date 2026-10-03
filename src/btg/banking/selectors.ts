@@ -19,6 +19,8 @@ export const CARDS = {
   invoiceStatus: ".card-bill__content .orq-badge__text",
   invoiceAmount: ".card-bill__bill p",
   chartLabels: ".highcharts-xaxis-labels > span",
+  /** Set by actions.MONTH_ANNOTATE on the label of the month the list shows. */
+  selectedAttribute: "data-btg-selected",
   holderItems: "btg-card-list-invoice orq-card-list-item",
   holderName: ".card-list__title-text",
   holderAmount: ".card-list__caption",

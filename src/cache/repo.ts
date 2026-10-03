@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { Where, escapeLike, inTx } from "../core/sqlite.js";
 import { stripAccents } from "../domain/dates.js";
-import type { CardsScreen, InvoiceMonth, InvoiceTransaction, StatementEntry } from "../domain/types.js";
+import type { CardsScreen, HolderTotal, InvoiceMonth, InvoiceTransaction, StatementEntry } from "../domain/types.js";
 
 // All SQL lives here. Rows are the storage shape (integer cents, ISO strings);
 // tools turn cents into reais at their edge.
@@ -10,7 +10,7 @@ import type { CardsScreen, InvoiceMonth, InvoiceTransaction, StatementEntry } fr
 /** Bump when a parser changes what it extracts; `sync --reparse` rebuilds from raw. */
 export const PARSER_VERSION = 1;
 
-export type SnapshotKind =
+export type BaseSnapshotKind =
   | "home"
   | "balance_detail"
   | "allocation"
@@ -18,6 +18,9 @@ export type SnapshotKind =
   | "future"
   | "cards_screen"
   | "statement_page";
+
+/** Per-month invoice screens and per-page statement screens keep their own raw copy. */
+export type SnapshotKind = BaseSnapshotKind | `cards_month:${string}` | `statement_page:${number}`;
 
 export type Snapshot<T> = { data: T; capturedAt: string; parserVersion: number; raw: string | null };
 
@@ -28,6 +31,8 @@ export type InvoiceRow = {
   total_cents: number | null;
   updated_at: string;
 };
+
+export type HolderRow = { month: string; holder: string; holder_name: string | null; total_cents: number | null };
 
 export type LineRow = {
   line_id: string;
@@ -116,6 +121,13 @@ export function createCacheRepo(db: Database, now: () => number) {
       ).run(kind, iso(), PARSER_VERSION, JSON.stringify(data), raw);
     },
 
+    /** Kinds stored under a prefix, e.g. every `cards_month:` screen. */
+    listSnapshotKinds(prefix: string): SnapshotKind[] {
+      return (db
+        .query("SELECT kind FROM snapshots WHERE substr(kind, 1, length(?)) = ? ORDER BY kind")
+        .all(prefix, prefix) as Array<{ kind: SnapshotKind }>).map((r) => r.kind);
+    },
+
     getSnapshot<T>(kind: SnapshotKind): Snapshot<T> | null {
       const row = db
         .query("SELECT data, captured_at, parser_version, raw FROM snapshots WHERE kind = ?")
@@ -187,6 +199,25 @@ export function createCacheRepo(db: Database, now: () => number) {
       });
     },
 
+    replaceInvoiceHolders(month: string, holders: HolderTotal[]): void {
+      inTx(db, () => {
+        db.query("DELETE FROM invoice_holders WHERE month = ?").run(month);
+        const insert = db.query(
+          "INSERT OR REPLACE INTO invoice_holders (month, holder_key, holder, holder_name, total_cents, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        );
+        const stamp = iso();
+        for (const h of holders) {
+          insert.run(month, h.holderName ?? h.holder, h.holder, h.holderName, h.totalCents, stamp);
+        }
+      });
+    },
+
+    listInvoiceHolders(month: string): HolderRow[] {
+      return db
+        .query("SELECT month, holder, holder_name, total_cents FROM invoice_holders WHERE month = ? ORDER BY holder DESC, holder_name")
+        .all(month) as HolderRow[];
+    },
+
     listInvoices(): InvoiceRow[] {
       return db.query("SELECT * FROM invoices ORDER BY month DESC").all() as InvoiceRow[];
     },
@@ -253,8 +284,10 @@ export function createCacheRepo(db: Database, now: () => number) {
     stats() {
       const count = (table: string) => (db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
       const snapshots = db.query("SELECT kind, captured_at FROM snapshots").all() as Array<{ kind: string; captured_at: string }>;
+      const monthsWithLines = (db.query("SELECT COUNT(DISTINCT invoice_month) AS n FROM invoice_lines").get() as { n: number }).n;
       return {
         invoices: count("invoices"),
+        invoicesWithLines: monthsWithLines,
         invoiceLines: count("invoice_lines"),
         statementEntries: count("statement_entries"),
         snapshots: Object.fromEntries(snapshots.map((s) => [s.kind, s.captured_at])),

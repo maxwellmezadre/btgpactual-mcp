@@ -13,7 +13,7 @@ O servidor expõe **15 tools**. Com `BTG_READ_ONLY=1` as 3 que escrevem algo (se
 | [`account_balance`](#accountbalance) | — | Saldo da conta corrente (com e sem o limite do cheque especial) e da conta investimento (total, investido, dis… |
 | [`account_statement`](#accountstatement) | — | Extrato da conta corrente (Pix, transferências, contas, compras no débito) linha a linha, com totais de entrad… |
 | [`cards_list`](#cardslist) | — | Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e cada car… |
-| [`invoice`](#invoice) | — | Fatura do cartão de um mês: status (aberta, fechada, paga, futura), valor total informado pelo BTG, gasto por … |
+| [`invoice`](#invoice) | — | Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x adicional) e… |
 | [`invoice_transactions`](#invoicetransactions) | — | Lançamentos das faturas do cartão: data, estabelecimento, valor, parcela (ex.: 3/10), portador (titular ou adi… |
 | [`investments_position`](#investmentsposition) | — | Carteira de investimentos consolidada: total, cada classe (renda variável, renda fixa, cripto e outras) e cada… |
 | [`investments_statement`](#investmentsstatement) | — | Extrato da conta investimento (saldo anterior, créditos, débitos, saldo atual e movimentações do período sincr… |
@@ -93,7 +93,7 @@ Extrato da conta corrente (Pix, transferências, contas, compras no débito) lin
 
 ## `cards_list`
 
-Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e cada cartão adicional gastaram na fatura que estava aberta na tela no último sync. Não usa a rede: lê o cache. Sem dados: rode `sync`. Os 4 últimos dígitos podem vir vazios (o BTG nem sempre os envia).
+Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e cada cartão adicional gastaram na fatura aberta (o gasto corrente do mês). Não usa a rede: lê o cache. Sem dados: rode `sync`. Os 4 últimos dígitos podem vir vazios (o BTG nem sempre os envia).
 
 **Escreve em disco/cache:** não
 
@@ -101,7 +101,7 @@ Sem parâmetros.
 
 ## `invoice`
 
-Fatura do cartão de um mês: status (aberta, fechada, paga, futura), valor total informado pelo BTG, gasto por portador (titular x adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a fatura que estava na tela no último sync. Lista também os meses conhecidos. Não usa a rede. O total só existe para as faturas que o app exibiu num sync.
+Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a fatura fechada (a do topo do app). O valor total informado pelo BTG só existe para a fatura fechada; para as outras use o gasto por portador e o resumo. Lista os meses conhecidos. Não usa a rede.
 
 **Escreve em disco/cache:** não
 

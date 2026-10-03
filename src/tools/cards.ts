@@ -11,13 +11,17 @@ export const cardsList = defineTool({
   name: "cards_list",
   description:
     "Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e " +
-    "cada cartão adicional gastaram na fatura que estava aberta na tela no último sync. Não usa a rede: lê " +
-    "o cache. Sem dados: rode `sync`. Os 4 últimos dígitos podem vir vazios (o BTG nem sempre os envia).",
+    "cada cartão adicional gastaram na fatura aberta (o gasto corrente do mês). Não usa a rede: lê o " +
+    "cache. Sem dados: rode `sync`. Os 4 últimos dígitos podem vir vazios (o BTG nem sempre os envia).",
   readOnly: true,
   input: Type.Object({}),
   run: (_args, ctx) => {
     const home = snapshot<Home>(ctx, "home");
-    const screen = ctx.cache().getSnapshot<CardsScreen>("cards_screen");
+    const repo = ctx.cache();
+    const invoices = repo.listInvoices();
+    const open = invoices.find((i) => i.status === "open");
+    const month = [open, ...invoices].find((i) => i && repo.listInvoiceHolders(i.month).length > 0)?.month ?? null;
+    const holders = month ? repo.listInvoiceHolders(month) : [];
     return compactObject({
       asOf: home.capturedAt,
       cards: home.data.cards.map((card) => ({
@@ -30,15 +34,11 @@ export const cardsList = defineTool({
         invoice: brl(card.invoiceCents),
         unlimited: card.unlimited,
       })),
-      spendingByHolder: screen
+      spendingByHolder: month
         ? {
-            invoiceMonth: screen.data.invoice?.month ?? null,
-            asOf: screen.capturedAt,
-            holders: screen.data.holderTotals.map((h) => ({
-              holder: h.holder,
-              name: h.holderName,
-              total: brl(h.totalCents),
-            })),
+            invoiceMonth: month,
+            invoiceStatus: invoices.find((i) => i.month === month)?.status ?? null,
+            holders: holders.map((h) => ({ holder: h.holder, name: h.holder_name, total: brl(h.total_cents) })),
           }
         : undefined,
     });
@@ -48,10 +48,10 @@ export const cardsList = defineTool({
 export const invoice = defineTool({
   name: "invoice",
   description:
-    "Fatura do cartão de um mês: status (aberta, fechada, paga, futura), valor total informado pelo BTG, " +
-    "gasto por portador (titular x adicional) e o resumo dos lançamentos (compras, parcelas, estornos, " +
-    "pagamentos). Sem `month`, usa a fatura que estava na tela no último sync. Lista também os meses " +
-    "conhecidos. Não usa a rede. O total só existe para as faturas que o app exibiu num sync.",
+    "Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x " +
+    "adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a " +
+    "fatura fechada (a do topo do app). O valor total informado pelo BTG só existe para a fatura fechada; " +
+    "para as outras use o gasto por portador e o resumo. Lista os meses conhecidos. Não usa a rede.",
   readOnly: true,
   input: Type.Object({ month: monthField }),
   run: (args, ctx) => {
@@ -63,16 +63,19 @@ export const invoice = defineTool({
     const lines = month ? repo.listInvoiceLines({ month, limit: 10_000 }).rows : [];
     const sum = (kinds: string[]) =>
       lines.filter((l) => kinds.includes(l.kind)).reduce((total, l) => total + (l.amount_cents ?? 0), 0);
-    const selected = screen.data.invoice?.month === month;
+    const holders = month ? repo.listInvoiceHolders(month) : [];
     return compactObject({
       asOf: screen.capturedAt,
       month,
       status: row?.status ?? null,
       statusLabel: row?.status_label ?? null,
       total: brl(row?.total_cents ?? null),
-      totalNote: row?.total_cents == null ? "O BTG só mostra o total da fatura selecionada na tela; este mês ainda não foi exibido num sync." : undefined,
-      spendingByHolder: selected
-        ? screen.data.holderTotals.map((h) => ({ holder: h.holder, name: h.holderName, total: brl(h.totalCents) }))
+      totalNote:
+        row?.total_cents == null
+          ? "O BTG só mostra o valor total da fatura fechada; para este mês use spendingByHolder e lines."
+          : undefined,
+      spendingByHolder: holders.length
+        ? holders.map((h) => ({ holder: h.holder, name: h.holder_name, total: brl(h.total_cents) }))
         : undefined,
       lines: lines.length
         ? {
@@ -83,7 +86,12 @@ export const invoice = defineTool({
             paymentsReceived: brl(sum(["payment"])),
           }
         : undefined,
-      knownInvoices: known.map((i) => ({ month: i.month, status: i.status, total: brl(i.total_cents) })),
+      knownInvoices: known.map((i) => ({
+        month: i.month,
+        status: i.status,
+        total: brl(i.total_cents),
+        lines: repo.listInvoiceLines({ month: i.month, limit: 1 }).total,
+      })),
     });
   },
 });

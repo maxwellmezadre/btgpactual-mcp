@@ -8,6 +8,7 @@ function stubBridge(over: Partial<Bridge> = {}): Bridge {
   return {
     apiGet: async (path) => ({ status: 200, url: path, body: "{}" }),
     render: async (path) => ({ url: path, title: "", html: "" }),
+    interact: async () => ({ url: "", title: "", html: "" }),
     account: () => "123456",
     running: () => true,
     close: async () => {},
@@ -83,6 +84,19 @@ describe("browser client", () => {
     });
     const { client } = wire(bridge);
     await expect(client.apiGet("/x")).rejects.toThrow(AuthError);
+    expect(n).toBe(1);
+  });
+
+  test("a click is never retried, even on a transient error", async () => {
+    let n = 0;
+    const bridge = stubBridge({
+      interact: async () => {
+        n++;
+        throw new HttpError(0, "blip");
+      },
+    });
+    const { client } = wire(bridge);
+    await expect(client.interact({ locate: "", done: "", label: "próximo" })).rejects.toThrow(HttpError);
     expect(n).toBe(1);
   });
 

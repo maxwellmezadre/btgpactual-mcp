@@ -50,11 +50,29 @@ export type RenderOptions = {
   settleMs?: number;
 };
 
+export type InteractOptions = {
+  /** In-page script returning the viewport point `{x, y}` to click, or null when the control is absent. */
+  locate: string;
+  /** In-page script returning true once the screen shows the result of the click. */
+  done: string;
+  /** In-page script run right before extraction (e.g. to mark the selected label). */
+  annotate?: string;
+  /** Extra wait after `done`, before extracting. */
+  settleMs?: number;
+  /** What is being clicked, for error messages. */
+  label: string;
+};
+
 export type Bridge = {
   /** Replays an investments GET and returns the raw response. */
   apiGet(path: string): Promise<ApiResult>;
   /** Navigates a banking screen and returns inert rendered HTML. */
   render(path: string, opts: RenderOptions): Promise<RenderResult>;
+  /**
+   * Clicks a control on the screen already open (never navigates), waits for
+   * the screen to confirm the change, and returns the new inert HTML.
+   */
+  interact(opts: InteractOptions): Promise<RenderResult>;
   /** The investment account number discovered at warm-up (or configured). */
   account(): string | null;
   /** True once a browser is up; `doctor`/`auth_status` report it without launching one. */
@@ -264,9 +282,36 @@ export function createBridge(opts: BridgeOptions): Bridge {
     return result;
   }
 
+  async function interact(options: InteractOptions): Promise<RenderResult> {
+    const current = page;
+    if (!current) throw new BankingRenderError(`Nenhuma tela aberta para clicar em ${options.label}.`);
+    if (!current.mouse) throw new BankingRenderError("O navegador não expõe o mouse.");
+    const point = (await current.evaluate(options.locate)) as { x: number; y: number } | null;
+    if (!point) throw new BankingRenderError(`Não encontrei ${options.label} na tela.`);
+    await current.mouse.move(point.x, point.y);
+    await current.mouse.click(point.x, point.y);
+    // Move away: a hovered chart column looks selected and would fool `done`.
+    await current.mouse.move(5, 5);
+    const deadline = now() + config.renderTimeoutMs;
+    for (;;) {
+      await sleep(WARMUP_POLL_MS);
+      if (landedOnLogin(current.url())) throw new AuthError("O BTG pediu login no meio da leitura.");
+      if ((await current.evaluate(options.done)) === true) break;
+      if (now() >= deadline) {
+        throw new BankingRenderError(`O clique em ${options.label} não produziu a mudança esperada na tela.`);
+      }
+    }
+    if (options.settleMs) await sleep(options.settleMs);
+    if (options.annotate) await current.evaluate(options.annotate);
+    const result = (await current.evaluate(EXTRACT_SCRIPT)) as RenderResult;
+    touch();
+    return result;
+  }
+
   return {
     apiGet,
     render,
+    interact,
     account: () => account,
     running: () => context !== null,
     close,
