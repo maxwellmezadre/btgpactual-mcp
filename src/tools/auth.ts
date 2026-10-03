@@ -9,6 +9,9 @@ import { compactObject, defineTool } from "./define.js";
 // true` spends exactly one investments request to confirm the app still
 // accepts the session.
 
+/** Observed: a BTG web session stops being accepted after roughly two hours. */
+export const LIKELY_EXPIRED_HOURS = 2;
+
 export type AuthStatus = {
   loggedIn: boolean;
   verified?: boolean;
@@ -74,7 +77,15 @@ export const authStatus = defineTool({
         hint: "A sessão salva não tem os marcadores de sessão do BTG. Rode `btgpactual login`.",
       });
     }
-    if (!args.verify) return compactObject(base);
+    if (!args.verify) {
+      return compactObject({
+        ...base,
+        hint:
+          (base.ageHours ?? 0) >= LIKELY_EXPIRED_HOURS
+            ? `Sessão salva há ${base.ageHours}h; o BTG costuma expirar a sessão em cerca de ${LIKELY_EXPIRED_HOURS}h. Confirme com verify=true; o cache continua respondendo.`
+            : undefined,
+      });
+    }
 
     try {
       await client.apiGet(HOME);

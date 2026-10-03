@@ -5,6 +5,9 @@ import type { Ctx } from "../src/context.js";
 import { runTool } from "../src/tools/define.js";
 import { SYNC_HINT } from "../src/tools/read.js";
 import { toolByName } from "../src/tools/registry.js";
+import { openCache } from "../src/cache/db.js";
+import { createContext } from "../src/context.js";
+import { silentLogger } from "./helpers.js";
 import { wireSync } from "./wire.js";
 
 type Any = Record<string, any>;
@@ -115,5 +118,25 @@ describe("read tools after a sync", () => {
     expect(r.checks.map((c: Any) => c.name)).toEqual(["config", "session", "cache", "browser", "investments", "banking"]);
     expect(r.checks.find((c: Any) => c.name === "investments").ok).toBeNull();
     expect(r.checks.find((c: Any) => c.name === "session").ok).toBe(false);
+  });
+});
+
+import { createMemorySessionStore } from "../src/session/store.js";
+import { sampleSession } from "./helpers.js";
+
+describe("auth_status without network", () => {
+  test("warns when the saved session is probably expired, never shows values", async () => {
+    const { ctx } = wireSync();
+    const old = createContext(ctx.config, {
+      session: createMemorySessionStore(sampleSession({ savedAt: Date.UTC(2026, 9, 2, 9) })),
+      now: () => Date.UTC(2026, 9, 2, 12),
+      db: openCache(":memory:"),
+      log: silentLogger(),
+    });
+    const r = await call(old, "auth_status");
+    expect(r.loggedIn).toBe(true);
+    expect(r.ageHours).toBe(3);
+    expect(r.hint).toContain("costuma expirar");
+    expect(JSON.stringify(r)).not.toContain("tok-abcdefgh");
   });
 });
