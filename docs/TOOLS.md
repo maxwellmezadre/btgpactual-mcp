@@ -9,11 +9,11 @@ O servidor expõe **15 tools**. Com `BTG_READ_ONLY=1` as 3 que escrevem algo (se
 | [`auth_status`](#authstatus) | — | Diz se há uma sessão do BTG salva e o que ela cobre (marcadores de sessão presentes, conta de investimento, id… |
 | [`login`](#login) | sim | Salva a sessão do BTG. Abre uma janela dedicada do Google Chrome no app, espera você fazer o login (senha, "nã… |
 | [`doctor`](#doctor) | — | Diagnóstico por camada: configuração, sessão salva, cache, navegador e, com deep=true, o canal investments (1 … |
-| [`sync`](#sync) | sim | Baixa os dados do BTG para o cache local em 3 fases: investimentos (saldos, carteira, extrato da conta investi… |
+| [`sync`](#sync) | sim | Baixa os dados do BTG para o cache local em 4 fases: investimentos (saldos, carteira, extrato da conta investi… |
 | [`account_balance`](#accountbalance) | — | Saldo da conta corrente (com e sem o limite do cheque especial) e da conta investimento (total, investido, dis… |
 | [`account_statement`](#accountstatement) | — | Extrato da conta corrente (Pix, transferências, contas, compras no débito) linha a linha, com totais de entrad… |
 | [`cards_list`](#cardslist) | — | Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e cada car… |
-| [`invoice`](#invoice) | — | Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x adicional) e… |
+| [`invoice`](#invoice) | — | Fatura do cartão de um mês: status (aberta, fechada, paga, futura), vencimento, fechamento, valor da fatura e … |
 | [`invoice_transactions`](#invoicetransactions) | — | Lançamentos das faturas do cartão: data, estabelecimento, valor, parcela (ex.: 3/10), portador (titular ou adi… |
 | [`investments_position`](#investmentsposition) | — | Carteira de investimentos consolidada: total, cada classe (renda variável, renda fixa, cripto e outras) e cada… |
 | [`investments_statement`](#investmentsstatement) | — | Extrato da conta investimento (saldo anterior, créditos, débitos, saldo atual e movimentações do período sincr… |
@@ -57,7 +57,7 @@ Diagnóstico por camada: configuração, sessão salva, cache, navegador e, com 
 
 ## `sync`
 
-Baixa os dados do BTG para o cache local em 3 fases: investimentos (saldos, carteira, extrato da conta investimento; segundos), faturas do cartão (cada mês do gráfico; ~45 s) e extrato da conta corrente (todas as páginas; ~25 s). Cada chamada para entre fases ao passar de `max_seconds` e devolve done=false: chame de novo com os mesmos `parts` até done=true. Precisa de sessão ativa; se falhar por sessão, peça `login` ao usuário. `reparse` reprocessa o que já está salvo, sem rede.
+Baixa os dados do BTG para o cache local em 4 fases: investimentos (saldos, carteira, extrato da conta investimento; segundos), faturas do cartão (cada mês do gráfico; ~45 s), histórico de faturas (vencimento, valor e valor pago, e as faturas antigas desde a primeira; a primeira vez leva alguns minutos, depois só relê a fechada e a aberta) e extrato da conta corrente (todas as páginas; ~25 s). Cada chamada para entre fases ao passar de `max_seconds` e devolve done=false: chame de novo com os mesmos `parts` até done=true. Precisa de sessão ativa; se falhar por sessão, peça `login` ao usuário. `reparse` reprocessa o que já está salvo, sem rede.
 
 **Escreve em disco/cache:** sim
 
@@ -102,7 +102,7 @@ Sem parâmetros.
 
 ## `invoice`
 
-Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a fatura fechada (a do topo do app). O valor total informado pelo BTG só existe para a fatura fechada; para as outras use o gasto por portador e o resumo. Lista os meses conhecidos. Não usa a rede.
+Fatura do cartão de um mês: status (aberta, fechada, paga, futura), vencimento, fechamento, valor da fatura e valor pago como o BTG mostra, gasto por portador (titular x adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a fatura fechada (a do topo do app). Lista os meses conhecidos, inclusive os antigos que o gráfico do app já não mostra. Não usa a rede.
 
 **Escreve em disco/cache:** não
 
@@ -112,7 +112,7 @@ Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por 
 
 ## `invoice_transactions`
 
-Lançamentos das faturas do cartão: data, estabelecimento, valor, parcela (ex.: 3/10), portador (titular ou adicional, com o nome) e tipo (compra, parcelada, internacional, estorno, pagamento). Valor negativo é cobrança; positivo é crédito. Compras parceladas mostram a data da compra original. Não usa a rede: lê o cache. Sem dados: rode `sync`.
+Lançamentos das faturas do cartão: data, estabelecimento, valor, parcela (ex.: 3/10), portador (titular ou adicional, com o nome) e tipo (compra, parcelada, internacional, estorno, pagamento). Valor negativo é cobrança; positivo é crédito. Compras parceladas mostram a data da compra original. Faturas antigas (fora do gráfico do app) vêm com portador `desconhecido`: a página de onde saem não diz de quem era o cartão. Não usa a rede: lê o cache. Sem dados: rode `sync`.
 
 **Escreve em disco/cache:** não
 

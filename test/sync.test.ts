@@ -18,14 +18,42 @@ describe("sync", () => {
       ["cards_month:2026-10", true],
       ["cards_month:2026-11", true],
       ["cards_month:2027-01", true],
+      ["invoice_full", true],
+      ["invoice_months", true],
+      ["invoice_full:2026-11", true],
+      ["invoice_full:2026-09", true],
       ["statement_page", true],
     ]);
-    expect(calls.render).toEqual(["/cartoes", "/conta-corrente"]);
+    expect(calls.render).toEqual([
+      "/cartoes",
+      "/cartoes",
+      "/cartoes/fatura-completa/1001",
+      "/cartoes/fatura-completa/999",
+      "/conta-corrente",
+    ]);
     // The closed month (Out) is never clicked first: its list is already on screen.
-    expect(calls.interact).toEqual(["a fatura de Set", "a fatura de Out", "a fatura de Nov", "a fatura de Jan/2027"]);
+    expect(calls.interact).toEqual([
+      "a fatura de Set",
+      "a fatura de Out",
+      "a fatura de Nov",
+      "a fatura de Jan/2027",
+      "a fatura completa",
+      "o seletor de faturas",
+      "a busca de faturas de 2026",
+      "a busca de faturas de 2025",
+    ]);
     expect(report.stats).toMatchObject({ invoices: 4, invoicesWithLines: 1, invoiceLines: 7, statementEntries: 4 });
     expect(ctx.cache().getSnapshot("allocation")?.data).toMatchObject({ totalCents: 350050 });
     expect(ctx.cache().getMeta("sync.last_completed_at")).toBe("2026-10-02T12:00:00.000Z");
+    // The full page dates every invoice and says what was paid.
+    expect(ctx.cache().listInvoices().find((i) => i.month === "2026-10")).toMatchObject({
+      due_date: "2026-10-07",
+      closing_date: "2026-10-03",
+      total_cents: 25000,
+      paid_cents: null,
+      statement_id: "1000",
+    });
+    expect(ctx.cache().listInvoices().find((i) => i.month === "2026-09")).toMatchObject({ paid_cents: 123456, statement_id: "999" });
   });
 
   test("a second sync replaces invoice lines and only adds new statement rows", async () => {
@@ -95,6 +123,67 @@ describe("sync", () => {
   });
 });
 
+describe("invoice history (full invoice page)", () => {
+  test("months off the chart get their lines from the full page; chart months only dates and amounts", async () => {
+    const { ctx } = wire({}, { firstMonth: "2026-07" });
+    const report = await runSync(ctx);
+    const history = report.steps.filter((s) => s.step.startsWith("invoice_full:")).map((s) => [s.step, s.ok]);
+    expect(history).toEqual([
+      ["invoice_full:2026-11", true],
+      ["invoice_full:2026-09", true],
+      ["invoice_full:2026-08", true],
+      ["invoice_full:2026-07", true],
+    ]);
+    const repo = ctx.cache();
+    expect(repo.getMeta("cards.first_invoice_month")).toBe("2026-07");
+    const august = repo.listInvoiceLines({ month: "2026-08" }).rows;
+    expect(august).toHaveLength(6);
+    expect(new Set(august.map((l) => l.holder))).toEqual(new Set(["desconhecido"]));
+    expect(repo.listInvoices().find((i) => i.month === "2026-08")).toMatchObject({
+      status: "paid",
+      due_date: "2026-08-07",
+      total_cents: 123456,
+      paid_cents: 123456,
+    });
+    // The chart's months keep the timeline's lines (they say titular or adicional).
+    expect(repo.listInvoiceLines({ month: "2026-10" }).rows.some((l) => l.holder === "adicional")).toBe(true);
+    expect(repo.listInvoiceLines({ month: "2026-10" }).total).toBe(7);
+    // Purchases from the history count as spending, under an unknown holder.
+    expect(repo.spending("holder", {}).find((r) => r.key === "desconhecido")).toMatchObject({ count: 6 });
+  });
+
+  test("the next sync re-reads only what can still change: the closed and the open invoice", async () => {
+    const { ctx, calls } = wire({}, { firstMonth: "2026-07" });
+    await runSync(ctx);
+    calls.render.length = 0;
+    calls.interact.length = 0;
+    const report = await runSync(ctx);
+    expect(report.steps.filter((s) => s.step.startsWith("invoice_")).map((s) => s.step)).toEqual([
+      "invoice_full",
+      "invoice_full:2026-11",
+    ]);
+    expect(calls.interact).not.toContain("o seletor de faturas");
+    expect(calls.render.filter((p) => p.includes("fatura-completa"))).toEqual(["/cartoes/fatura-completa/1001"]);
+  });
+
+  test("an id that shows another month stops the walk: nothing filed, nothing else tried", async () => {
+    const { ctx, calls } = wire({}, { firstMonth: "2026-07", fullIdShift: 5 });
+    const report = await runSync(ctx);
+    const nov = report.steps.find((s) => s.step === "invoice_full:2026-11");
+    expect(nov).toMatchObject({ ok: false });
+    expect(nov?.error).toContain("em vez de 2026-11");
+    expect(calls.render.filter((p) => p.includes("fatura-completa"))).toEqual(["/cartoes/fatura-completa/1001"]);
+    expect(ctx.cache().listInvoiceLines({ month: "2026-08" }).total).toBe(0);
+  });
+
+  test("every page of an invoice is read", async () => {
+    const { ctx, calls } = wire({}, { fullPages: 2 });
+    await runSync(ctx);
+    expect(calls.interact).toContain("a próxima página da fatura");
+    expect(ctx.cache().getSnapshot("invoice_full:2026-10")?.data).toMatchObject({ pages: 2, lines: 12 });
+  });
+});
+
 describe("cache queries", () => {
   test("spending by holder: charges and refunds, payments excluded", async () => {
     const { ctx } = wire();
@@ -139,10 +228,12 @@ describe("chunked sync", () => {
     expect([first.done, first.next]).toEqual([false, "cards"]);
     expect(calls.render).toEqual([]);
     const second = await runSync(ctx, { budgetMs: 0 });
-    expect([second.done, second.next]).toEqual([false, "statement"]);
+    expect([second.done, second.next]).toEqual([false, "history"]);
     expect(calls.render).toEqual(["/cartoes"]);
     const third = await runSync(ctx, { budgetMs: 0 });
-    expect(third.done).toBe(true);
+    expect([third.done, third.next]).toEqual([false, "statement"]);
+    const fourth = await runSync(ctx, { budgetMs: 0 });
+    expect(fourth.done).toBe(true);
     expect(calls.api.filter((p) => p.endsWith("/home"))).toHaveLength(1); // investments ran once
     expect(ctx.cache().getMeta("sync.cursor")).toBeNull();
     expect(ctx.cache().getMeta("sync.last_completed_at")).not.toBeNull();

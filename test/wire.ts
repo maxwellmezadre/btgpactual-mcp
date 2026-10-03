@@ -26,6 +26,47 @@ export const HTML_BY_ROUTE: Record<string, string> = {
 
 type Calls = { api: string[]; render: string[]; interact: string[] };
 
+const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+/** The id the fake app gives the closed invoice (2026-10); ids are consecutive per month. */
+export const ANCHOR_ID = 1000;
+const ANCHOR_INDEX = 2026 * 12 + 9;
+
+/** The full invoice page for `month`, from the August fixture; Oct is closed, Nov open, the rest paid. */
+export function fullInvoiceHtml(month: string, opts: { nextPage?: boolean } = {}): string {
+  const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1] as string;
+  const status = month === "2026-10" ? "Fechada" : month === "2026-11" ? "Em aberto" : "Pago";
+  let html = fixture("banking/fatura-completa.html")
+    .replaceAll("Agosto", name)
+    .replace("Fatura de " + name + " 2026", `Fatura de ${name} ${month.slice(0, 4)}`)
+    .replace(" Pago ", ` ${status} `);
+  if (status !== "Pago") {
+    // Nothing paid yet: no "Valor pago" column. The closed one charges what /cartoes shows.
+    html = html.replace(/<div class="invoice-details__divider invoice-details__amount-divider">[\s\S]*?<\/strong><\/div><\/div>\s*<\/div>/, "</div>");
+    if (month === "2026-10") html = html.replace("R$ 1.234,56", "R$ 250,00");
+  }
+  if (opts.nextPage) {
+    html = html.replace(
+      'data-testid="pagination-next-button" class="orq-pagination__list-item orq-pagination__list-item--disabled"',
+      'data-testid="pagination-next-button" class="orq-pagination__list-item"',
+    );
+  }
+  return html;
+}
+
+/** The picker searched for 2026: from `first` (in 2026) up to December. */
+function pickerHtml(first: string): string {
+  const titles = MONTH_NAMES.map((name, i) => [`2026-${String(i + 1).padStart(2, "0")}`, `${name} 2026`])
+    .filter(([month]) => (month as string) >= first)
+    .reverse()
+    .map(([, title]) => `<span class="orq-dropdown-list__title">${title}</span>`);
+  return `<orq-droplist>${titles.join("")}</orq-droplist>`;
+}
+
+const monthForId = (id: number) => {
+  const index = ANCHOR_INDEX + id - ANCHOR_ID;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+};
+
 /** The cards screen after clicking `label`: that label marked; only "Out" has lines. */
 export function cardsAfterClick(label: string, mark = label): string {
   let html = (HTML_BY_ROUTE["/cartoes"] as string).replace(
@@ -59,6 +100,12 @@ export type FakeOptions = {
   statementPages?: 1 | 2;
   /** Click on month X but the screen confirms month Y. */
   wrongMonth?: Record<string, string>;
+  /** Full invoice ids that are NOT consecutive: id N shows month(N) shifted by this. */
+  fullIdShift?: number;
+  /** The closed invoice's full page has a second page. */
+  fullPages?: 1 | 2;
+  /** Oldest invoice the picker lists (2026 only). Default: the chart's first month, so no history lines. */
+  firstMonth?: string;
 };
 
 function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}, opts: FakeOptions = {}): BrowserClient {
@@ -71,6 +118,8 @@ function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}, opts: FakeO
     },
     render: async (path) => {
       calls.render.push(path);
+      const full = /^\/cartoes\/fatura-completa\/(\d+)$/.exec(path);
+      if (full) return { url: path, title: "", html: fullInvoiceHtml(monthForId(Number(full[1]) + (opts.fullIdShift ?? 0))) };
       if (path === "/conta-corrente" && opts.statementPages === 2) return { url: path, title: "", html: statementPages().first };
       return { url: path, title: "", html: HTML_BY_ROUTE[path] ?? "" };
     },
@@ -79,6 +128,12 @@ function fakeClient(calls: Calls, over: Partial<BrowserClient> = {}, opts: FakeO
       const month = /^a fatura de (.+)$/.exec(options.label)?.[1];
       if (month) return { url: "/cartoes", title: "", html: cardsAfterClick(month, opts.wrongMonth?.[month] ?? month) };
       if (options.label === "a próxima página do extrato") return { url: "/conta-corrente", title: "", html: statementPages().second };
+      const url = `/cartoes/fatura-completa/${ANCHOR_ID}`;
+      if (options.label === "a fatura completa") return { url, title: "", html: fullInvoiceHtml("2026-10", { nextPage: opts.fullPages === 2 }) };
+      if (options.label === "a próxima página da fatura") return { url, title: "", html: fullInvoiceHtml("2026-10").replace("Padaria Exemplo", "Padaria Segunda Pagina") };
+      if (options.label === "o seletor de faturas") return { url, title: "", html: "" };
+      if (options.label === "a busca de faturas de 2026") return { url, title: "", html: pickerHtml(opts.firstMonth ?? "2026-09") };
+      if (options.label.startsWith("a busca de faturas de")) return { url, title: "", html: "" };
       throw new Error(`unexpected interact ${options.label}`);
     },
     account: () => "000000001",

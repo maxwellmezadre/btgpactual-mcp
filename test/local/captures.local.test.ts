@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { parseFullInvoice, parseInvoiceOptions } from "../../src/btg/banking/invoice-details.js";
 import { parseBalanceDetail, parseSummaryBalance } from "../../src/btg/investments/balance.js";
 import { parseHome } from "../../src/btg/investments/home.js";
 import { parseAllocation } from "../../src/btg/investments/position.js";
@@ -124,5 +125,31 @@ describe.skipIf(!hasHtml("conta-corrente"))("real captures: statement screen", (
     expect(screen.entries.every((e) => e.date && e.time && e.amountCents !== null)).toBe(true);
     expect(new Set(screen.entries.map((e) => e.id)).size).toBe(screen.entries.length);
     expect(screen.page?.total ?? 0).toBeGreaterThanOrEqual(screen.entries.length);
+  });
+});
+
+const FULL_DIR = join(DIR, "invoice-full");
+const fullPages = existsSync(FULL_DIR) ? readdirSync(FULL_DIR).filter((f) => /^\d{4}-\d{2}-p\d+\.html$/.test(f)) : [];
+
+describe.skipIf(fullPages.length === 0)("real captures: full invoice pages", () => {
+  test("every page: its month, dates, amount, and one line per row detail", () => {
+    for (const file of fullPages) {
+      const html = readFileSync(join(FULL_DIR, file), "utf8");
+      const page = parseFullInvoice(html);
+      expect(page.month).toBe(file.slice(0, 7));
+      expect(page.dueDate?.startsWith(page.month as string)).toBe(true);
+      expect(page.closingDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(page.totalCents).not.toBeNull();
+      if (page.status === "paid") expect(page.paidCents).not.toBeNull();
+      expect(page.warnings).toEqual([]);
+      expect(page.transactions.length).toBe((html.match(/<btg-invoice-transaction-detail/g) ?? []).length);
+      expect(page.page).toBe(Number(/-p(\d+)\.html$/.exec(file)?.[1]));
+    }
+  });
+
+  test.skipIf(!existsSync(join(FULL_DIR, "picker-2026.html")))("the picker search lists the year's months", () => {
+    const months = parseInvoiceOptions(readFileSync(join(FULL_DIR, "picker-2026.html"), "utf8"));
+    expect(months.length).toBeGreaterThan(0);
+    expect(months.every((m) => m.startsWith("2026-"))).toBe(true);
   });
 });

@@ -8,9 +8,10 @@ export const DEFAULT_MAX_SECONDS = 50;
 export const sync = defineTool({
   name: "sync",
   description:
-    "Baixa os dados do BTG para o cache local em 3 fases: investimentos (saldos, carteira, extrato da " +
-    "conta investimento; segundos), faturas do cartão (cada mês do gráfico; ~45 s) e extrato da conta " +
-    "corrente (todas as páginas; ~25 s). Cada chamada para entre fases ao passar de `max_seconds` e " +
+    "Baixa os dados do BTG para o cache local em 4 fases: investimentos (saldos, carteira, extrato da " +
+    "conta investimento; segundos), faturas do cartão (cada mês do gráfico; ~45 s), histórico de faturas " +
+    "(vencimento, valor e valor pago, e as faturas antigas desde a primeira; a primeira vez leva alguns " +
+    "minutos, depois só relê a fechada e a aberta) e extrato da conta corrente (todas as páginas; ~25 s). Cada chamada para entre fases ao passar de `max_seconds` e " +
     "devolve done=false: chame de novo com os mesmos `parts` até done=true. Precisa de sessão ativa; se " +
     "falhar por sessão, peça `login` ao usuário. `reparse` reprocessa o que já está salvo, sem rede.",
   readOnly: false,

@@ -106,3 +106,96 @@ export const PAGER_NEXT_DONE = `/*btg pager done*/
   window.__btgStable = same ? (window.__btgStable || 0) + 1 : 0;
   return window.__btgStable >= 2;
 })()`;
+
+// Full invoice page (`/cartoes/fatura-completa/{id}`): opening it from the
+// cards screen, the invoice picker's search (to learn which months exist) and
+// its pager. Same contract: navigation and reading only.
+
+const FULL_ROWS = `[...document.querySelectorAll("btg-invoice-details tbody > tr")].map((r) => r.textContent).join("|")`;
+const FULL_READY = `(!!document.querySelector("btg-invoice-details .invoice-details__title") &&
+  !!document.querySelector("btg-invoice-details btg-invoice-transaction-detail, btg-invoice-details [data-testid=invoice-transactions-empty], btg-invoice-details [data-testid=invoice-transactions-error]"))`;
+const HOLD_STILL = `(() => {
+  const sig = ${FULL_ROWS};
+  const same = window.__btgSig === sig;
+  window.__btgSig = sig;
+  window.__btgStable = same ? (window.__btgStable || 0) + 1 : 0;
+  return window.__btgStable >= 2;
+})()`;
+
+const centerOf = (el: string) => `(() => {
+  const el = ${el};
+  if (!el) return null;
+  el.scrollIntoView({ block: "center" });
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`;
+
+/** "Conferir fatura completa" on /cartoes: opens the closed invoice's full page. */
+export const FULL_LINK_LOCATE = `/*btg full link locate*/
+(() => {
+  window.__btgSig = undefined;
+  window.__btgStable = 0;
+  return ${centerOf(`[...document.querySelectorAll(".orq-link__label, a, button")].find((e) => /Conferir fatura completa/i.test(e.textContent || ""))`)};
+})()`;
+
+/** On the full page, with an id in the url, rows painted and holding still. */
+export const FULL_PAGE_DONE = `/*btg full page done*/
+(() => {
+  if (!/\\/cartoes\\/fatura-completa\\/\\d+/.test(location.pathname)) return false;
+  if (!${FULL_READY}) return false;
+  return ${HOLD_STILL};
+})()`;
+
+/** The full page's "next page" arrow, unless it is disabled (last page). */
+export const FULL_PAGER_NEXT_LOCATE = `/*btg full pager locate*/
+(() => {
+  const next = document.querySelector("btg-invoice-details [data-testid=pagination-next-button]");
+  if (!next || next.classList.contains("orq-pagination__list-item--disabled")) return null;
+  window.__btgRows = ${FULL_ROWS};
+  window.__btgSig = undefined;
+  window.__btgStable = 0;
+  return ${centerOf("next")};
+})()`;
+
+export const FULL_PAGER_NEXT_DONE = `/*btg full pager done*/
+(() => {
+  if (!${FULL_READY}) return false;
+  if (${FULL_ROWS} === window.__btgRows) return false;
+  return ${HOLD_STILL};
+})()`;
+
+/** The invoice picker's field; clicking it opens the list with its search box. */
+export const PICKER_OPEN_LOCATE = `/*btg picker locate*/
+${centerOf(`document.querySelector("btg-invoice-details .invoice-details__filters orq-select .orq-select__wrapper-field") || document.querySelector("btg-invoice-details .invoice-details__filters orq-select")`)}`;
+
+export const PICKER_OPEN_DONE = `/*btg picker done*/
+!!document.querySelector('btg-invoice-details input[placeholder="Buscar fatura"]')`;
+
+/** The picker's search box, emptied so the typed text replaces the previous search. */
+export const PICKER_SEARCH_LOCATE = `/*btg picker search locate*/
+(() => {
+  const input = document.querySelector('btg-invoice-details input[placeholder="Buscar fatura"]');
+  if (!input) return null;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  window.__btgSig = undefined;
+  window.__btgStable = 0;
+  return ${centerOf("input")};
+})()`;
+
+/** The list shows only `query`'s months (or "Nenhuma fatura encontrada") and holds still. */
+export function pickerSearchDone(query: string): string {
+  return `/*btg picker search done*/
+(() => {
+  const input = document.querySelector('btg-invoice-details input[placeholder="Buscar fatura"]');
+  if (!input || input.value !== ${json(query)}) return false;
+  const titles = [...document.querySelectorAll("btg-invoice-details orq-select .orq-dropdown-list__title")].map((e) => (e.textContent || "").trim());
+  const empty = !!document.querySelector("btg-invoice-details orq-select [data-testid=empty]");
+  if (!empty && (!titles.length || !titles.every((t) => t.endsWith(${json(query)})))) return false;
+  const sig = titles.join("|");
+  const same = window.__btgSig === sig;
+  window.__btgSig = sig;
+  window.__btgStable = same ? (window.__btgStable || 0) + 1 : 0;
+  return window.__btgStable >= 2;
+})()`;
+}

@@ -159,6 +159,14 @@ describe("bridge", () => {
     expect(result.html).toBe("<p>depois</p>");
   });
 
+  test("interact types after the click when asked (search boxes)", async () => {
+    const { bridge, fake } = wire();
+    await bridge.render("/cartoes", { readySelector: ".x" });
+    await bridge.interact({ locate: "/*locate*/", done: "/*done*/", type: "2026", label: "a busca" });
+    expect(fake.clicks).toEqual([[10, 20]]);
+    expect(fake.typed).toEqual(["2026"]);
+  });
+
   test("interact without an open screen, or a missing control, fails", async () => {
     const { bridge } = wire({ locate: () => null });
     await expect(bridge.interact({ locate: "/*locate*/", done: "/*done*/", label: "mês" })).rejects.toThrow(BankingRenderError);

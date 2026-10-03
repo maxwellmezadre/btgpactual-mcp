@@ -10,11 +10,13 @@ import { BALANCE_DETAIL, FUTURE, HOME, accountStatement, allocationSummary } fro
 import type { Ctx } from "../context.js";
 import { AuthError, CaptchaError, ParseError } from "../core/errors.js";
 import type { InvoiceMonth } from "../domain/types.js";
+import { reparseFullInvoices, runHistoryPhase } from "./history.js";
 import type { BaseSnapshotKind, CacheRepo, SnapshotKind } from "./repo.js";
 
 // One sync = the investments channel (a handful of JSON replays, seconds) plus
 // the banking screens: the cards screen clicked month by month (every invoice
-// visible on its chart) and the statement paged to the end. Each source has ONE
+// visible on its chart), the full invoice page for every older month still
+// missing (history.ts) and the statement paged to the end. Each source has ONE
 // ingest function, used both live and by `--reparse`, which re-runs the parsers
 // over the stored raw payloads with no network at all.
 
@@ -42,11 +44,11 @@ export type SyncReport = {
 };
 
 /** The units a sync is split into; each runs to the end once started. */
-export type Phase = "investments" | "cards" | "statement";
+export type Phase = "investments" | "cards" | "history" | "statement";
 const PHASES: Record<SyncParts, Phase[]> = {
-  all: ["investments", "cards", "statement"],
+  all: ["investments", "cards", "history", "statement"],
   investments: ["investments"],
-  banking: ["cards", "statement"],
+  banking: ["cards", "history", "statement"],
 };
 /** A half-finished sync older than this starts over instead of resuming. */
 export const CURSOR_TTL_MS = 30 * 60_000;
@@ -161,6 +163,7 @@ function reparse(repo: CacheRepo, steps: StepResult[]): void {
     const month = kind.slice("cards_month:".length);
     if (snap?.raw) run(kind, () => ingestCardsMonth(repo, snap.raw as string, new Date(snap.capturedAt), month));
   }
+  reparseFullInvoices(repo, run);
   for (const kind of repo.listSnapshotKinds("statement_page:")) {
     const snap = repo.getSnapshot<unknown>(kind);
     const page = Number(kind.slice("statement_page:".length));
@@ -222,6 +225,7 @@ export async function runSync(ctx: Ctx, opts: SyncOptions = {}): Promise<SyncRep
         });
       }
     },
+    history: () => runHistoryPhase(client, repo, (name, fn) => step(steps, name, fn)),
     statement: async () => {
       await step(steps, "statement_page", async () => {
         const first = await client.render(STATEMENT.route, { readySelector: STATEMENT.ready, settleMs: 1000 });

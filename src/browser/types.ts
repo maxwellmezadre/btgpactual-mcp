@@ -28,6 +28,8 @@ export type PageLike = {
     move(x: number, y: number): Promise<void>;
     click(x: number, y: number): Promise<void>;
   };
+  /** Real key presses, for search boxes that filter on input events. */
+  keyboard?: { type(text: string): Promise<void> };
 };
 
 export type RouteLike = {

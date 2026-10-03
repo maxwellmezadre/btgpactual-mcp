@@ -182,7 +182,10 @@ Parâmetros de cada uma em [docs/TOOLS.md](docs/TOOLS.md).
    cifra, a ferramenta abre as telas de cartões e da conta corrente e lê o
    HTML já desenhado. Na tela de cartões ela clica em cada mês do gráfico (com
    mouse de verdade) e só aceita a lista quando o próprio gráfico confirma o mês
-   escolhido; no extrato, avança página por página até o fim.
+   escolhido. As faturas que o gráfico já não mostra vêm da página "Fatura
+   completa": a ferramenta abre a da fatura fechada pelo link do app, pergunta
+   ao seletor desde quando existem faturas e lê cada mês que falta, conferindo
+   o mês no título de cada página. No extrato, avança página por página até o fim.
 5. Tudo vai para um SQLite local, com os valores em centavos inteiros e a
    resposta bruta guardada, para reprocessar sem rede quando um parser mudar.
 

@@ -8,7 +8,7 @@ import { openDatabase } from "../core/sqlite.js";
 //   - every source keeps its raw payload (JSON or rendered HTML), so a fixed
 //     parser re-runs over it with zero network (`sync --reparse`).
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Ordered and append-only: a released migration is never edited. */
 export const MIGRATIONS: string[] = [
@@ -80,6 +80,13 @@ export const MIGRATIONS: string[] = [
     updated_at   TEXT NOT NULL,
     PRIMARY KEY (month, holder_key)
   );
+  `,
+  `
+  -- From the full invoice page: dates, what was paid, and the app's id for it.
+  ALTER TABLE invoices ADD COLUMN due_date TEXT;
+  ALTER TABLE invoices ADD COLUMN closing_date TEXT;
+  ALTER TABLE invoices ADD COLUMN paid_cents INTEGER;
+  ALTER TABLE invoices ADD COLUMN statement_id TEXT;
   `,
 ];
 

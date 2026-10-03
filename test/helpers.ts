@@ -83,6 +83,7 @@ export type FakeBrowser = {
   clicks: Array<[number, number]>;
   annotated: number;
   launches: number;
+  typed: string[];
   /** Every investments GET script, to assert which session headers were replayed. */
   apiScripts: string[];
   /** Kills the browser from outside (crash, OOM, someone ran `kill`). */
@@ -107,6 +108,7 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     clicks: [],
     annotated: 0,
     launches: 0,
+    typed: [],
     apiScripts: [],
     crash: () => {
       for (const listener of closeListeners) listener();
@@ -132,6 +134,11 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
       return Promise.resolve();
     },
     url: () => landed,
+    keyboard: {
+      type: async (text: string) => {
+        fake.typed.push(text);
+      },
+    },
     mouse: {
       move: async () => {},
       click: async (x: number, y: number) => {

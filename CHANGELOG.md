@@ -8,6 +8,13 @@ Todas as mudanças relevantes deste projeto ficam aqui. O formato segue o
 
 ### Added
 
+- Histórico de faturas: o `sync` ganhou a fase `history`, que lê a página
+  "Fatura completa" de cada mês que o gráfico do app já não mostra (desde a
+  primeira fatura do cartão) e, em todas as faturas, vencimento, fechamento,
+  valor e valor pago. Meses pagos já lidos não são relidos.
+- `invoice` mostra `dueDate`, `closingDate`, `total` e `paid` de qualquer mês
+  lido, não só da fatura fechada.
+
 - `login`: abre uma janela comum do Google Chrome no app do BTG, espera o
   login humano (senha, reCAPTCHA, verificação em duas etapas, escolha da
   conta), testa a sessão no navegador de leitura, grava cifrada e fecha a
@@ -42,5 +49,20 @@ Todas as mudanças relevantes deste projeto ficam aqui. O formato segue o
 - `BTG_READ_ONLY=1`, que remove `login`, `sync` e `export` do servidor.
 - Scripts `verify`, `gen-tools-doc`, `install` e `capture-fixtures`; CI e
   release com binários e publish no npm por OIDC.
+
+### Fixed
+
+- O navegador de leitura reaproveitava os cabeçalhos de uma sessão anterior
+  depois de reiniciar: o warm-up "terminava" na hora e a primeira chamada
+  dava 401 mesmo com uma sessão nova salva.
+- Um navegador fechado por fora (crash, `kill`) era reutilizado e toda chamada
+  falhava com "Target page, context or browser has been closed".
+- Um 401 ou um redirecionamento ao login fecha o navegador de leitura, então a
+  chamada seguinte relê a sessão do disco (pega um `login` feito em outro
+  processo). `login` fecha o navegador de leitura antes de começar.
+- Dois processos (o servidor MCP e o CLI, ou dois servidores) disputavam o
+  perfil do Chrome; o segundo agora usa um perfil temporário.
+- `bun run setup` troca o binário com rename atômico: sobrescrever no lugar
+  matava os servidores MCP em execução no macOS.
 
 [Unreleased]: https://github.com/maxwellmezadre/btgpactual-mcp/commits/main

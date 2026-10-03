@@ -68,10 +68,19 @@ describe("read tools after a sync", () => {
     ]);
   });
 
-  test("invoice for a month whose total was never shown explains why", async () => {
-    const r = await call(ctx, "invoice", { month: "2026-11" });
+  test("invoice: dates, amount and paid amount from the full invoice page", async () => {
+    const open = await call(ctx, "invoice", { month: "2026-11" });
+    expect(open).toMatchObject({ dueDate: "2026-11-07", closingDate: "2026-11-03", total: 1234.56 });
+    expect(open.paid).toBeUndefined();
+    expect(open.totalNote).toContain("ainda cresce");
+    const paid = await call(ctx, "invoice", { month: "2026-09" });
+    expect(paid).toMatchObject({ status: "paid", total: 1234.56, paid: 1234.56 });
+  });
+
+  test("invoice for a month whose amount was never read explains why", async () => {
+    const r = await call(ctx, "invoice", { month: "2027-01" });
     expect(r.total).toBeNull();
-    expect(r.totalNote).toContain("só mostra o valor total da fatura fechada");
+    expect(r.totalNote).toContain("ainda não lido");
   });
 
   test("invoice_transactions: installments and holder filters", async () => {

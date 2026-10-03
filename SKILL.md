@@ -35,15 +35,20 @@ parâmetros em `TOOLS.md`, ao lado deste arquivo.
    por sessão, peça para o usuário rodar `btgpactual login` no terminal (abre
    uma janela; ele faz o login e o MFA) e depois chame `sync` de novo, que
    retoma da fase onde parou. Você não consegue fazer o login por ele.
-4. **O que cada número significa.** `invoice.total` é o "Valor total da
-   fatura" que o próprio BTG mostra; ele não precisa bater com a soma dos
-   lançamentos (há saldo anterior, pagamentos e tarifas que não viram linha).
+4. **O que cada número significa.** `invoice.total` é o "Valor da fatura"
+   que o próprio BTG mostra: o que ela cobra, já descontados os pagamentos
+   feitos antes do fechamento. Não precisa bater com a soma dos lançamentos
+   (pagamentos antecipados, cashback e tarifas). `invoice.paid` é o "Valor
+   pago" (só existe depois de pago); `dueDate` e `closingDate` são as datas da
+   própria fatura, não as presuma.
    Em `invoice_transactions`, valor negativo é cobrança e positivo é crédito
    (pagamento de fatura, estorno). Parcelas mostram a data da compra original.
    `yieldPercent` é ganho dividido pelo investido.
-5. **Cobertura.** Cada sync traz todas as faturas do gráfico do app (paga
-   anterior, fechada, aberta e futuras) e todas as páginas do extrato do
-   período padrão da tela. `account_statement.coverage` compara o cache com o
+5. **Cobertura.** O cache tem todas as faturas desde a primeira do cartão
+   (as antigas vêm da página "Fatura completa", lidas uma vez), as futuras do
+   gráfico e todas as páginas do extrato do período padrão da tela. Nas
+   faturas antigas o portador é `desconhecido`: aquela página não diz se foi
+   titular ou adicional. `account_statement.coverage` compara o cache com o
    total do período no banco. Fora disso não há dado: não afirme que um
    lançamento não existiu só porque não está no cache.
 6. **Dado pessoal só quando pedido.** Não repita números de conta, nomes de
@@ -78,7 +83,12 @@ Todo comando do CLI aceita `--json`.
 
 - "Qual meu saldo?" → `account_balance` (diga `asOf`).
 - "Quanto está a fatura?" → `invoice` (sem `month` = a fechada, com o valor
-  total do BTG). "Fatura do mês passado" costuma ser a fechada.
+  do BTG e o vencimento). "Fatura do mês passado" costuma ser a fechada.
+- "Quanto já paguei da fatura?" → `invoice` do mês: `paid` quando já paga;
+  antes disso, `lines.paymentsReceived` (pagamentos antecipados no ciclo).
+- "Quando vence / quando fecha?" → `invoice` (`dueDate`, `closingDate`).
+- "Quanto gastei no cartão este ano?" → `spending_summary` com
+  `group_by: "invoice"` e `from`/`to`.
 - "Quanto já gastei no cartão este mês?" → `invoice` do mês com status `open`
   (`spendingByHolder` e `lines`), ou `cards_list`.
 - "Quanto de parcela vem nos próximos meses?" → `invoice` ou

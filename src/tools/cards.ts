@@ -48,10 +48,10 @@ export const cardsList = defineTool({
 export const invoice = defineTool({
   name: "invoice",
   description:
-    "Fatura do cartão de um mês: status (aberta, fechada, paga, futura), gasto por portador (titular x " +
-    "adicional) e o resumo dos lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a " +
-    "fatura fechada (a do topo do app). O valor total informado pelo BTG só existe para a fatura fechada; " +
-    "para as outras use o gasto por portador e o resumo. Lista os meses conhecidos. Não usa a rede.",
+    "Fatura do cartão de um mês: status (aberta, fechada, paga, futura), vencimento, fechamento, valor da " +
+    "fatura e valor pago como o BTG mostra, gasto por portador (titular x adicional) e o resumo dos " +
+    "lançamentos (compras, parcelas, estornos, pagamentos). Sem `month`, usa a fatura fechada (a do topo do " +
+    "app). Lista os meses conhecidos, inclusive os antigos que o gráfico do app já não mostra. Não usa a rede.",
   readOnly: true,
   input: Type.Object({ month: monthField }),
   run: (args, ctx) => {
@@ -69,11 +69,16 @@ export const invoice = defineTool({
       month,
       status: row?.status ?? null,
       statusLabel: row?.status_label ?? null,
+      dueDate: row?.due_date ?? undefined,
+      closingDate: row?.closing_date ?? undefined,
       total: brl(row?.total_cents ?? null),
+      paid: brl(row?.paid_cents ?? null) ?? undefined,
       totalNote:
         row?.total_cents == null
-          ? "O BTG só mostra o valor total da fatura fechada; para este mês use spendingByHolder e lines."
-          : undefined,
+          ? "Valor desta fatura ainda não lido; o sync o traz da página da fatura completa (aberta, fechada e anteriores)."
+          : row.status === "open"
+            ? "Fatura aberta: o valor ainda cresce até o fechamento."
+            : undefined,
       spendingByHolder: holders.length
         ? holders.map((h) => ({ holder: h.holder, name: h.holder_name, total: brl(h.total_cents) }))
         : undefined,
@@ -86,12 +91,16 @@ export const invoice = defineTool({
             paymentsReceived: brl(sum(["payment"])),
           }
         : undefined,
-      knownInvoices: known.map((i) => ({
-        month: i.month,
-        status: i.status,
-        total: brl(i.total_cents),
-        lines: repo.listInvoiceLines({ month: i.month, limit: 1 }).total,
-      })),
+      knownInvoices: known.map((i) =>
+        compactObject({
+          month: i.month,
+          status: i.status,
+          dueDate: i.due_date ?? undefined,
+          total: brl(i.total_cents),
+          paid: brl(i.paid_cents) ?? undefined,
+          lines: repo.listInvoiceLines({ month: i.month, limit: 1 }).total,
+        }),
+      ),
     });
   },
 });
@@ -102,7 +111,8 @@ export const invoiceTransactions = defineTool({
     "Lançamentos das faturas do cartão: data, estabelecimento, valor, parcela (ex.: 3/10), portador " +
     "(titular ou adicional, com o nome) e tipo (compra, parcelada, internacional, estorno, pagamento). " +
     "Valor negativo é cobrança; positivo é crédito. Compras parceladas mostram a data da compra original. " +
-    "Não usa a rede: lê o cache. Sem dados: rode `sync`.",
+    "Faturas antigas (fora do gráfico do app) vêm com portador `desconhecido`: a página de onde saem não " +
+    "diz de quem era o cartão. Não usa a rede: lê o cache. Sem dados: rode `sync`.",
   readOnly: true,
   input: Type.Object({
     month: monthField,

@@ -26,6 +26,44 @@ export const CARDS = {
   holderAmount: ".card-list__caption",
 } as const;
 
+/**
+ * "Fatura completa" (`/cartoes/fatura-completa/{statementId}`): one invoice per
+ * page with its due/closing dates, amount and paid amount, every line with a
+ * full date, 100 lines per page, and a picker that reaches every invoice the
+ * card ever had. It does not say whose card (titular or adicional) a line was.
+ */
+export const FULL_INVOICE = {
+  route: (statementId: string) => `/cartoes/fatura-completa/${statementId}`,
+  idFromUrl: /\/cartoes\/fatura-completa\/(\d+)/,
+  /** The header paints before the rows: wait for a row's detail or an explicit empty/error state. */
+  ready:
+    "btg-invoice-details btg-invoice-transaction-detail, btg-invoice-details [data-testid=invoice-transactions-empty], " +
+    "btg-invoice-details [data-testid=invoice-transactions-error]",
+  root: "btg-invoice-details",
+  error: "[data-testid=invoice-transactions-error]",
+  title: ".invoice-details__title",
+  status: ".invoice-details__title-wrapper .orq-badge__text",
+  /** "Valor da fatura" and "Valor pago" share one item, one column each. */
+  item: ".invoice-details__item, .invoice-details__amount-column",
+  label: ".invoice-details__label",
+  value: ".invoice-details__value",
+  rows: "tbody > tr",
+  /** Cells of a main row, in order: date, description, purchase mode, amount. */
+  cells: ".orq-table__image__column__container span",
+  detail: "btg-invoice-transaction-detail",
+  detailLabel: ".transaction-detail__label",
+  detailValue: ".transaction-detail__value",
+  activePage: ".orq-pagination__list-item--active",
+  nextPage: "[data-testid=pagination-next-button]",
+  disabledPage: "orq-pagination__list-item--disabled",
+  /** On /cartoes: the link that opens the closed invoice's full page. */
+  link: "Conferir fatura completa",
+  picker: "btg-invoice-details .invoice-details__filters orq-select",
+  pickerSearch: 'input[placeholder="Buscar fatura"]',
+  pickerOption: ".orq-dropdown-list__title",
+  pickerEmpty: "Nenhuma fatura encontrada",
+} as const;
+
 export const STATEMENT = {
   route: "/conta-corrente",
   /**
@@ -64,4 +102,13 @@ export const UI_VOCABULARY = [
   "Titular",
   "Saldo do dia",
   "Linhas por página",
+  "Fatura de",
+  "Data do vencimento",
+  "Data do fechamento",
+  "Valor da fatura",
+  "Valor pago",
+  "Nome no app",
+  "Número de parcelas",
+  "Conferir fatura completa",
+  "Nenhuma fatura encontrada",
 ] as const;

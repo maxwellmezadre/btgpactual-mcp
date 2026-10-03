@@ -21,9 +21,11 @@ const INSTALLMENT = /\s*\((\d{1,3})\/(\d{1,3})\)\s*$/;
 
 export function kindOf(subtitle: string | null): CardTransactionKind {
   const text = stripAccents(subtitle ?? "").toLowerCase();
-  if (text.includes("cancelad")) return "cancelled";
+  // Timeline wording ("...parcelada", "...cancelada") and the full invoice
+  // page's ("Parcela sem juros", "Cancelamento de compra").
+  if (text.includes("cancelad") || text.includes("cancelament")) return "cancelled";
   if (text.includes("fatura paga") || text.startsWith("pagamento")) return "payment";
-  if (text.includes("parcelad")) return "installment";
+  if (text.includes("parcel")) return "installment";
   if (text.includes("internacional")) return "international";
   if (text.includes("compra")) return "purchase";
   return "other";

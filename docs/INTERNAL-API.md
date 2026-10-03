@@ -45,6 +45,7 @@ Canal do banco (cifrado, lido pelas telas):
 | Tela | Chamadas que dispara |
 | --- | --- |
 | `/cartoes` | `cards/v2/list`, `cards/v1/invoices`, `cards/v1/invoices/chart`, `cards/v1/card-transactions?type=CREDIT` |
+| `/cartoes/fatura-completa/{id}` | `cards/v2/invoices/invoicesReducedList`, `cards/v3/invoices/{id}/details?page=0&size=100` |
 | `/conta-corrente` | `statement/v1`, `home/v1/account-balance` |
 
 Estrutura das telas (classes BEM do design system, estáveis entre deploys):
@@ -55,6 +56,17 @@ Estrutura das telas (classes BEM do design system, estáveis entre deploys):
   (`btg-card-list-invoice`: titular e adicionais); lançamentos
   (`app-timeline-card .timeline-container`, cabeçalho de dia `.timeline-date`
   com `h2`/`h4`, linhas `.timeline-item__title`, `__subtitle`, `__value`).
+- `/cartoes/fatura-completa/{id}` (`btg-invoice-details`): título
+  `.invoice-details__title` ("Fatura de Outubro 2026", sempre com ano), status
+  no `.orq-badge__text`; `.invoice-details__item` com rótulo/valor
+  (`.invoice-details__label`/`__value`): "Data do vencimento", "Data do
+  fechamento" (sem ano) e, numa `.invoice-details__amount-column` cada, "Valor
+  da fatura" e "Valor pago". Tabela: cada linha (data `dd/mm/aaaa`,
+  descrição, modo de compra, valor com sinal) é seguida de uma linha oculta
+  com `btg-invoice-transaction-detail` (nome no app, tipo de cartão, modo de
+  compra, "Número de parcelas" `N/T`). 100 linhas por página; próximo em
+  `[data-testid=pagination-next-button]` (`--disabled` na última). Não diz se
+  a linha é do titular ou do adicional.
 - `/conta-corrente`: `btg-extract table.extract__table`; linha de cabeçalho
   com `.extract__date-info__date__value` ("Sex 03/out") e o "Saldo do dia";
   linhas `tr.extract__row`; agendamentos num accordion
@@ -71,6 +83,13 @@ Estrutura das telas (classes BEM do design system, estáveis entre deploys):
 - No carregamento, o gráfico destaca a fatura **aberta** enquanto a lista
   mostra a **fechada**. Por isso o destaque só vale depois de um clique, e a
   primeira coluna clicada nunca é a da fatura fechada.
+- Fatura completa: o link "Conferir fatura completa" de `/cartoes` abre a
+  fatura fechada e dá o id na url. O seletor "Fatura" (`orq-select`) lista
+  todas as faturas do cartão, das futuras à primeira, mas só desenha as que
+  cabem na tela; a busca ("Buscar fatura") por ano mostra o ano inteiro e
+  "Nenhuma fatura encontrada" (`[data-testid=empty]`) quando não há. Os ids
+  são consecutivos por mês (visto de 2026-01 a 2027-08); a ferramenta só
+  tenta meses que o seletor lista e confere o mês no título de cada página.
 - Extrato: o "próximo" é o último item de `.orq-pagination__list` (com
   `icon-chevron-right`), que ganha `--disabled` na última página.
 

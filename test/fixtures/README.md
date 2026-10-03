@@ -23,6 +23,10 @@ captura real veio sem movimentação. As capturas reais ficam em `task/captures/
 
 ## Banking (HTML renderizado)
 
+`banking/fatura-completa.html` (página "Fatura completa", com cabeçalho,
+linhas e o detalhe oculto de cada uma) e `banking/seletor-faturas.html` (o
+seletor de faturas depois de uma busca) seguem a mesma regra.
+
 `banking/cartoes.html` e `banking/conta-corrente.html` são HTML **escrito à
 mão** com as mesmas classes BEM das telas reais (`/cartoes` e
 `/conta-corrente`, capturadas em 03/10/2026) e dados inventados. Cobrem: grupo

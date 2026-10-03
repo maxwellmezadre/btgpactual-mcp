@@ -2,13 +2,20 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { Where, escapeLike, inTx } from "../core/sqlite.js";
 import { stripAccents } from "../domain/dates.js";
-import type { CardsScreen, HolderTotal, InvoiceMonth, InvoiceTransaction, StatementEntry } from "../domain/types.js";
+import type {
+  CardsScreen,
+  FullInvoicePage,
+  HolderTotal,
+  InvoiceMonth,
+  InvoiceTransaction,
+  StatementEntry,
+} from "../domain/types.js";
 
 // All SQL lives here. Rows are the storage shape (integer cents, ISO strings);
 // tools turn cents into reais at their edge.
 
 /** Bump when a parser changes what it extracts; `sync --reparse` rebuilds from raw. */
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
 export type BaseSnapshotKind =
   | "home"
@@ -20,7 +27,11 @@ export type BaseSnapshotKind =
   | "statement_page";
 
 /** Per-month invoice screens and per-page statement screens keep their own raw copy. */
-export type SnapshotKind = BaseSnapshotKind | `cards_month:${string}` | `statement_page:${number}`;
+export type SnapshotKind =
+  | BaseSnapshotKind
+  | `cards_month:${string}`
+  | `statement_page:${number}`
+  | `invoice_full:${string}`;
 
 export type Snapshot<T> = { data: T; capturedAt: string; parserVersion: number; raw: string | null };
 
@@ -30,6 +41,10 @@ export type InvoiceRow = {
   status_label: string | null;
   total_cents: number | null;
   updated_at: string;
+  due_date: string | null;
+  closing_date: string | null;
+  paid_cents: number | null;
+  statement_id: string | null;
 };
 
 export type HolderRow = { month: string; holder: string; holder_name: string | null; total_cents: number | null };
@@ -150,6 +165,21 @@ export function createCacheRepo(db: Database, now: () => number) {
           upsert.run(selected.month, selected.status, selected.statusLabel, selected.totalCents, stamp);
         }
       });
+    },
+
+    /** The full invoice page's header. Its amount is authoritative for every month, not just the closed one. */
+    upsertInvoiceDetails(header: FullInvoicePage & { month: string }, statementId: string): void {
+      db.query(
+        `INSERT INTO invoices (month, status, status_label, total_cents, updated_at, due_date, closing_date, paid_cents, statement_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(month) DO UPDATE SET status = excluded.status, status_label = excluded.status_label,
+           total_cents = COALESCE(excluded.total_cents, invoices.total_cents), updated_at = excluded.updated_at,
+           due_date = excluded.due_date, closing_date = excluded.closing_date, paid_cents = excluded.paid_cents,
+           statement_id = excluded.statement_id`,
+      ).run(
+        header.month, header.status, header.statusLabel, header.totalCents, iso(), header.dueDate,
+        header.closingDate, header.paidCents, statementId,
+      );
     },
 
     /** The screen shows one invoice whole: replace that month's lines atomically. */

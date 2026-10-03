@@ -109,6 +109,24 @@ export type CardsScreen = {
   warnings: string[];
 };
 
+/** One page of the full invoice screen (`/cartoes/fatura-completa/{id}`). */
+export type FullInvoicePage = {
+  month: string | null;
+  status: InvoiceStatus;
+  statusLabel: string | null;
+  dueDate: string | null;
+  closingDate: string | null;
+  /** "Valor da fatura": what the invoice charges, net of payments made before it closed. */
+  totalCents: number | null;
+  /** "Valor pago"; absent until something was paid. */
+  paidCents: number | null;
+  page: number | null;
+  hasNextPage: boolean;
+  /** Holder is always "desconhecido": this screen does not say whose card it was. */
+  transactions: InvoiceTransaction[];
+  warnings: string[];
+};
+
 /** One checking account statement line. Sign as shown: negative leaves the account. */
 export type StatementEntry = {
   /** Stable across pages and syncs: hash of date, time, counterparty, amount, description, occurrence. */

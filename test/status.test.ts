@@ -9,6 +9,11 @@ describe("status", () => {
     expect(invoiceStatus("Futura")).toBe("future");
     expect(invoiceStatus("Fechada")).toBe("closed");
     expect(invoiceStatus("")).toBe("unknown");
+    // The full invoice page's badges. "Não paga" and "parcialmente" contain "pag" too.
+    expect(invoiceStatus("Pago")).toBe("paid");
+    expect(invoiceStatus("Em aberto")).toBe("open");
+    expect(invoiceStatus("Fatura não paga")).toBe("unpaid");
+    expect(invoiceStatus("Fatura paga parcialmente")).toBe("partial");
   });
   test("holder titular vs adicional with name", () => {
     expect(holderOf("Compra no crédito")).toEqual({ holder: "titular" });

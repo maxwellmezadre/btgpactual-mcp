@@ -59,6 +59,8 @@ export type InteractOptions = {
   annotate?: string;
   /** Extra wait after `done`, before extracting. */
   settleMs?: number;
+  /** Typed after the click (the click focuses a search box). */
+  type?: string;
   /** What is being clicked, for error messages. */
   label: string;
 };
@@ -312,6 +314,10 @@ export function createBridge(opts: BridgeOptions): Bridge {
     if (!point) throw new BankingRenderError(`Não encontrei ${options.label} na tela.`);
     await current.mouse.move(point.x, point.y);
     await current.mouse.click(point.x, point.y);
+    if (options.type !== undefined) {
+      if (!current.keyboard) throw new BankingRenderError("O navegador não expõe o teclado.");
+      await current.keyboard.type(options.type);
+    }
     // Move away: a hovered chart column looks selected and would fool `done`.
     await current.mouse.move(5, 5);
     const deadline = now() + config.renderTimeoutMs;

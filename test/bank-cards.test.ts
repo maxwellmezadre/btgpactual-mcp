@@ -81,6 +81,14 @@ describe("cards screen", () => {
     expect(kindOf(null)).toBe("other");
   });
 
+  test("kindOf: the full invoice page's purchase modes", () => {
+    expect(kindOf("Compra a vista")).toBe("purchase");
+    expect(kindOf("Parcela sem juros")).toBe("installment");
+    expect(kindOf("Compra internacional")).toBe("international");
+    expect(kindOf("Cancelamento de compra")).toBe("cancelled");
+    expect(kindOf("Pagamento")).toBe("payment");
+  });
+
   test("a page without invoice or timeline is a ParseError", () => {
     expect(() => parseCardsScreen("<html><body><p>nada</p></body></html>", now)).toThrow(ParseError);
   });

@@ -4,12 +4,18 @@ import { stripAccents } from "./dates.js";
 // machine tokens. The original label is always kept alongside so nothing is
 // lost when a new wording appears.
 
-export type InvoiceStatus = "open" | "paid" | "future" | "closed" | "unknown";
+export type InvoiceStatus = "open" | "paid" | "partial" | "unpaid" | "future" | "closed" | "unknown";
 
-/** "Fatura aberta" -> open, "Paga" -> paid, "Futura" -> future, "Fechada" -> closed. */
+/**
+ * "Fatura aberta"/"Em aberto" -> open, "Paga"/"Pago" -> paid, "Futura" -> future,
+ * "Fechada" -> closed. "Não paga" and "paga parcialmente" are checked first:
+ * both contain "pag".
+ */
 export function invoiceStatus(label: string | null | undefined): InvoiceStatus {
   const text = stripAccents(label ?? "").toLowerCase();
   if (!text) return "unknown";
+  if (text.includes("nao pag")) return "unpaid";
+  if (text.includes("parcial")) return "partial";
   if (text.includes("abert")) return "open";
   if (text.includes("pag")) return "paid";
   if (text.includes("futur")) return "future";
@@ -17,7 +23,11 @@ export function invoiceStatus(label: string | null | undefined): InvoiceStatus {
   return "unknown";
 }
 
-export type Holder = "titular" | "adicional";
+/**
+ * "desconhecido": lines read from the full invoice page (months older than the
+ * chart), which does not say whose card it was.
+ */
+export type Holder = "titular" | "adicional" | "desconhecido";
 
 /**
  * A card transaction line tells titular from adicional by its description
