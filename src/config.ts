@@ -11,10 +11,6 @@ import { Value } from "@sinclair/typebox/value";
 export const BROWSER_CHANNELS = ["chrome", "chromium", "msedge"] as const;
 export type BrowserChannel = (typeof BROWSER_CHANNELS)[number];
 
-/** Chromium-based browsers whose profile can seed a login (macOS). */
-export const IMPORT_BROWSERS = ["arc", "chrome", "chromium", "brave", "edge"] as const;
-export type ImportBrowser = (typeof IMPORT_BROWSERS)[number];
-
 export const DEFAULT_BASE_URL = "https://app.btgpactual.com";
 export const SESSION_KEY_BYTES = 32;
 
@@ -50,15 +46,6 @@ export const ConfigSchema = Type.Object({
     Type.Literal("chromium"),
     Type.Literal("msedge"),
   ]),
-  importBrowser: Type.Optional(
-    Type.Union([
-      Type.Literal("arc"),
-      Type.Literal("chrome"),
-      Type.Literal("chromium"),
-      Type.Literal("brave"),
-      Type.Literal("edge"),
-    ]),
-  ),
   /** Data reads run headless; `false` shows the window (debugging, WAF/MFA). */
   headless: Type.Boolean(),
   /** Minimum gap between two network calls (plus random jitter). */
@@ -202,7 +189,6 @@ export function loadConfig(env: Env = process.env): Config {
       BROWSER_CHANNELS,
       "chrome",
     ) as BrowserChannel,
-    importBrowser: readEnum(problems, env, "BTG_IMPORT_BROWSER", IMPORT_BROWSERS, undefined),
     headless: readBool(problems, env, "BTG_HEADLESS", true),
     // ~1.5-3 s per network call. This is browsing speed against a bank behind a
     // WAF, not API speed; going faster is what earns a challenge.

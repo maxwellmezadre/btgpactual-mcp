@@ -1,7 +1,10 @@
+import type { Database } from "bun:sqlite";
 import { type BrowserClient, createBrowserClient } from "./browser/client.js";
 import { launchWithPlaywright } from "./browser/launch.js";
 import { createBridge } from "./browser/transport.js";
 import type { LaunchBrowser } from "./browser/types.js";
+import { openCache } from "./cache/db.js";
+import { type CacheRepo, createCacheRepo } from "./cache/repo.js";
 import { type Config, loadConfig } from "./config.js";
 import { type Logger, createLogger } from "./core/logger.js";
 import { type SessionStore, createSessionStore } from "./session/store.js";
@@ -19,6 +22,10 @@ export type ContextDeps = {
   random?: () => number;
   session?: SessionStore;
   log?: Logger;
+  /** `:memory:` in tests. */
+  db?: Database;
+  /** A ready client (tests); otherwise the real bridge is built on first use. */
+  client?: BrowserClient;
 };
 
 export type Ctx = {
@@ -28,6 +35,8 @@ export type Ctx = {
   session: SessionStore;
   /** Memoised BTG bridge+client; launches Chrome only on first network use. */
   client: () => BrowserClient;
+  /** Memoised: the SQLite file is opened (and migrated) only on first use. */
+  cache: () => CacheRepo;
   dispose: () => void;
 };
 
@@ -41,7 +50,27 @@ export function createContext(config: Config, deps: ContextDeps = {}): Ctx {
       secrets: () => session.peekSecrets(),
     });
 
-  let client: BrowserClient | undefined;
+  let db: Database | undefined;
+  let repo: CacheRepo | undefined;
+  const cache = (): CacheRepo => {
+    if (!repo) {
+      db = deps.db ?? openCache(config.dbPath);
+      repo = createCacheRepo(db, now);
+    }
+    return repo;
+  };
+
+  // The anti-bot cooldown outlives the process: a new CLI run or a retrying
+  // agent must not hit BTG again before it expires.
+  const cooldown = {
+    get: () => {
+      const value = cache().getMeta("antibot.cooldown_until");
+      return value ? Number(value) : null;
+    },
+    set: (until: number) => cache().setMeta("antibot.cooldown_until", String(until)),
+  };
+
+  let client: BrowserClient | undefined = deps.client;
   const getClient = (): BrowserClient => {
     if (!client) {
       const bridge = createBridge({
@@ -53,7 +82,7 @@ export function createContext(config: Config, deps: ContextDeps = {}): Ctx {
         now,
       });
       client = createBrowserClient(
-        { bridge, minIntervalMs: config.minIntervalMs, jitterMs: config.jitterMs, log },
+        { bridge, minIntervalMs: config.minIntervalMs, jitterMs: config.jitterMs, log, cooldown },
         { now, ...(deps.sleep ? { sleep: deps.sleep } : {}), ...(deps.random ? { random: deps.random } : {}) },
       );
     }
@@ -66,9 +95,13 @@ export function createContext(config: Config, deps: ContextDeps = {}): Ctx {
     now,
     session,
     client: getClient,
+    cache,
     dispose: () => {
       void client?.close();
       client = undefined;
+      if (deps.db === undefined) db?.close();
+      db = undefined;
+      repo = undefined;
     },
   };
 }

@@ -1,16 +1,40 @@
 import type { Config } from "../config.js";
+import { accountBalance, accountStatement } from "./account.js";
+import { spendingSummary } from "./analytics.js";
 import { authStatus } from "./auth.js";
+import { cardsList, invoice, invoiceTransactions } from "./cards.js";
 import type { ToolDef } from "./define.js";
+import { doctor } from "./doctor.js";
+import { exportData } from "./export.js";
+import { investmentsPosition, investmentsStatement, openFinanceSummary } from "./investments.js";
 import { login } from "./login.js";
 import { rawGet } from "./raw.js";
+import { sync } from "./sync.js";
 
 // Flat registry shared by the MCP server and the CLI: the two surfaces cannot
 // drift, because they resolve tools from this same array. The order here is the
-// order clients see. Tools are added by their step; the final surface is 18.
+// order clients see.
 export const allTools: ToolDef[] = [
   // Session and diagnostics
   authStatus,
   login,
+  doctor,
+  // Cache
+  sync,
+  // Checking account
+  accountBalance,
+  accountStatement,
+  // Credit cards
+  cardsList,
+  invoice,
+  invoiceTransactions,
+  // Investments and open finance
+  investmentsPosition,
+  investmentsStatement,
+  openFinanceSummary,
+  // Analytics
+  spendingSummary,
+  exportData,
   // Escape hatch
   rawGet,
 ];

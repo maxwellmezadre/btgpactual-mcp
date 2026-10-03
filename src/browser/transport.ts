@@ -46,6 +46,8 @@ const BLOCKED_RESOURCES = new Set(["image", "font", "media"]);
 export type RenderOptions = {
   /** CSS selector that proves the screen finished rendering its rows. */
   readySelector: string;
+  /** Extra wait after ready, for lists that keep painting after the first row. */
+  settleMs?: number;
 };
 
 export type Bridge = {
@@ -256,6 +258,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
       }
       await sleep(WARMUP_POLL_MS);
     }
+    if (options.settleMs) await sleep(options.settleMs);
     const result = (await current.evaluate(EXTRACT_SCRIPT)) as RenderResult;
     touch();
     return result;
