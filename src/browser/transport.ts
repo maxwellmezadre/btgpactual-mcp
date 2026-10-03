@@ -117,14 +117,30 @@ export function createBridge(opts: BridgeOptions): Bridge {
   let warmed = false;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  async function close(): Promise<void> {
+  /**
+   * Forgets the browser AND what was captured from it: headers from a previous
+   * browser belong to a session that may have expired, and replaying them makes
+   * warm-up "succeed" at once and the first call 401.
+   */
+  function reset(): void {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = null;
-    const current = context;
     context = null;
     page = null;
     warmed = false;
+    headers = {};
+  }
+
+  async function close(): Promise<void> {
+    const current = context;
+    reset();
     if (current) await current.close().catch(() => undefined);
+  }
+
+  /** Auth failures drop the browser, so the next call restores whatever session is on disk now. */
+  async function authFailure(message: string): Promise<AuthError> {
+    await close();
+    return new AuthError(message);
   }
 
   function touch(): void {
@@ -142,13 +158,19 @@ export function createBridge(opts: BridgeOptions): Bridge {
     if (!data) throw new AuthError("Nenhuma sessão do BTG salva.");
     account = config.account ?? data.account ?? account;
     log.info(`starting ${config.headless ? "headless" : "windowed"} browser for BTG`);
-    context = await opts.launch({
+    const launched = await opts.launch({
       channel: config.browserChannel,
       profileDir: config.browserProfileDir,
       headless: config.headless,
       userAgent: data.userAgent,
       locale: config.locale,
       timezoneId: config.timezone,
+    });
+    context = launched;
+    // Killed from outside: without this the dead page is reused and every call
+    // fails with "Target page, context or browser has been closed".
+    launched.on?.("close", () => {
+      if (context === launched) reset();
     });
     try {
       // The snapshot restores the session; the capture hook records the live
@@ -210,13 +232,13 @@ export function createBridge(opts: BridgeOptions): Bridge {
     let accountDeadline: number | null = null;
     for (;;) {
       if (landedOnLogin(current.url())) {
-        throw new AuthError("O BTG não aceitou a sessão salva e pediu login.");
+        throw await authFailure("O BTG não aceitou a sessão salva e pediu login.");
       }
       // A snapshot taken before the account was chosen restores into the
       // account picker, where the app never calls the investments channel.
       // Say so at once instead of waiting out the timeout.
       if (ACCOUNT_SELECTION.test(current.url())) {
-        throw new AuthError("A sessão salva para na seleção de conta (a conta não foi escolhida antes de salvar).");
+        throw await authFailure("A sessão salva para na seleção de conta (a conta não foi escolhida antes de salvar).");
       }
       const state = (await current.evaluate(READ_CAPTURE_SCRIPT)) as CaptureState;
       headers = mergeHeaders(headers, state);
@@ -227,7 +249,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
         // Account-less is still usable; per-account calls will say what is missing.
         if (now() >= accountDeadline) break;
       } else if (now() >= deadline) {
-        throw new AuthError(
+        throw await authFailure(
           "A sessão do BTG não ficou ativa no navegador (o app não emitiu os headers de sessão).",
         );
       }
@@ -244,7 +266,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
     const url = new URL(path, config.baseUrl).toString();
     const result = (await current.evaluate(apiFetchScript(url, headers))) as ApiResult;
     if (result.status === 401 || result.status === 403) {
-      throw new AuthError(`O BTG respondeu ${result.status} em ${path}.`);
+      throw await authFailure(`O BTG respondeu ${result.status} em ${path}.`);
     }
     if (result.status >= 400) {
       throw new HttpError(result.status, `BTG respondeu HTTP ${result.status} em ${path}.`);
@@ -262,7 +284,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
       throw new HttpError(0, `Falha ao abrir ${url}: ${(error as Error).message}`);
     }
     if (landedOnLogin(current.url())) {
-      throw new AuthError(`O BTG pediu login ao abrir ${path}.`);
+      throw await authFailure(`O BTG pediu login ao abrir ${path}.`);
     }
     const script = readyScript(options.readySelector);
     const deadline = now() + config.renderTimeoutMs;
@@ -295,7 +317,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
     const deadline = now() + config.renderTimeoutMs;
     for (;;) {
       await sleep(WARMUP_POLL_MS);
-      if (landedOnLogin(current.url())) throw new AuthError("O BTG pediu login no meio da leitura.");
+      if (landedOnLogin(current.url())) throw await authFailure("O BTG pediu login no meio da leitura.");
       if ((await current.evaluate(options.done)) === true) break;
       if (now() >= deadline) {
         throw new BankingRenderError(`O clique em ${options.label} não produziu a mudança esperada na tela.`);

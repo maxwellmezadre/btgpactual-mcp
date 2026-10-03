@@ -33,6 +33,9 @@ export const login = defineTool({
     ),
   }),
   run: async (args, ctx) => {
+    // The reading browser still holds the old session (and the profile the
+    // login check needs); the next read must start from the new one.
+    await ctx.client().close();
     if (args.attach) return runAttachLogin(ctx, args.endpoint ? { endpoint: args.endpoint } : {});
     return runLogin(ctx, {
       ...(args.timeout_seconds ? { timeoutMs: args.timeout_seconds * 1000 } : {}),

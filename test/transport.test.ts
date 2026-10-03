@@ -182,6 +182,53 @@ describe("bridge", () => {
     expect(fake.closed).toBe(1);
   });
 
+  test("a browser killed from outside is relaunched, not reused", async () => {
+    const { bridge, fake } = wire();
+    await bridge.apiGet("/investments/api/x");
+    fake.crash();
+    expect(bridge.running()).toBe(false);
+    await bridge.apiGet("/investments/api/x");
+    expect(fake.launches).toBe(2);
+  });
+
+  test("after a relaunch, warm-up waits for the new session's headers instead of replaying the old ones", async () => {
+    const stale = { authorization_code: "tok-stale-aaaa", sessionid: "sid-stale-aaaa" };
+    const fresh = { authorization_code: "tok-fresh-bbbb", sessionid: "sid-fresh-bbbb" };
+    const { bridge, fake } = wire({
+      // poll 0: first browser. Polls 1-3: relaunched app not booted yet. Poll 4: new headers.
+      capture: (poll) =>
+        poll === 0
+          ? { headers: stale, account: "123456", seen: 1 }
+          : poll < 4
+            ? { headers: {}, account: null, seen: 0 }
+            : { headers: fresh, account: "123456", seen: 1 },
+    });
+    await bridge.apiGet("/investments/api/x");
+    await bridge.close();
+    await bridge.apiGet("/investments/api/x");
+    expect(fake.apiScripts.at(-1)).toContain("tok-fresh-bbbb");
+    expect(fake.apiScripts.at(-1)).not.toContain("tok-stale");
+  });
+
+  test("a 401 drops the browser so the next call restores the session saved meanwhile", async () => {
+    const { bridge, fake, session } = wire({
+      api: (url, call) => ({ status: call === 0 ? 401 : 200, url, body: "{}" }),
+    });
+    await expect(bridge.apiGet("/investments/api/x")).rejects.toThrow(AuthError);
+    expect(bridge.running()).toBe(false);
+    // e.g. `btgpactual login` ran in another process
+    session.save(sampleSession({ storage: { _a: "tok-relogin-cc", sessionid: "sid-relogin-cc" } }));
+    await bridge.apiGet("/investments/api/x");
+    expect(fake.launches).toBe(2);
+    expect(fake.initScripts.filter((s) => s.startsWith(RESTORE_MARKER)).at(-1)).toContain("tok-relogin-cc");
+  });
+
+  test("a login redirect also drops the browser", async () => {
+    const { bridge } = wire({ landingFor: () => "https://app.btgpactual.com/login" });
+    await expect(bridge.render("/cartoes", { readySelector: ".x" })).rejects.toThrow(AuthError);
+    expect(bridge.running()).toBe(false);
+  });
+
   test("mirrors a refreshed snapshot back to the store", async () => {
     const { bridge, session } = wire({
       dump: { storage: { _a: "tok-abcdefgh", sessionid: "sid-abcdefgh", fresh: "rotated-xyz" }, local: {} },

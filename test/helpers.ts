@@ -82,12 +82,22 @@ export type FakeBrowser = {
   addedCookies: number;
   clicks: Array<[number, number]>;
   annotated: number;
+  launches: number;
+  /** Every investments GET script, to assert which session headers were replayed. */
+  apiScripts: string[];
+  /** Kills the browser from outside (crash, OOM, someone ran `kill`). */
+  crash: () => void;
 };
 
 /** A browser the tests can fully script, matching evaluate() by its marker. */
 export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
+  let closeListeners: Array<() => void> = [];
   const fake: FakeBrowser = {
-    launch: async () => context,
+    launch: async () => {
+      fake.launches += 1;
+      closeListeners = [];
+      return context;
+    },
     initScripts: [],
     gotos: [],
     closed: 0,
@@ -96,6 +106,11 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     addedCookies: 0,
     clicks: [],
     annotated: 0,
+    launches: 0,
+    apiScripts: [],
+    crash: () => {
+      for (const listener of closeListeners) listener();
+    },
   };
   let donePolls = 0;
   const defaultCapture: CaptureState = {
@@ -126,6 +141,7 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     evaluate: (script: string) => {
       if (script.startsWith(READ_CAPTURE_MARKER)) return Promise.resolve(readCapture());
       if (script.startsWith(API_FETCH_MARKER)) {
+        fake.apiScripts.push(script);
         const call = fake.apiCalls++;
         const result = scenario.api
           ? scenario.api(landed, call)
@@ -171,8 +187,12 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
       handler({ request: () => ({ resourceType: () => "document" }), abort: async () => {}, continue: async () => {} });
       return Promise.resolve();
     },
+    on: (_event: "close", listener: () => void) => {
+      closeListeners.push(listener);
+    },
     close: () => {
       fake.closed += 1;
+      for (const listener of closeListeners) listener();
       return Promise.resolve();
     },
   };

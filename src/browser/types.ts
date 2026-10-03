@@ -44,6 +44,8 @@ export type BrowserContextLike = {
   route?(pattern: string, handler: (route: RouteLike) => unknown): Promise<void>;
   /** Seeds auth cookies captured from the user's real browser (attach login). */
   addCookies?(cookies: CookieRecord[]): Promise<void>;
+  /** Fires when the browser goes away, including from outside (crash, `kill`). */
+  on?(event: "close", listener: () => void): unknown;
   close(): Promise<void>;
 };
 
