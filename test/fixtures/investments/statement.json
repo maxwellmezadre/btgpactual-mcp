@@ -1,0 +1,20 @@
+{
+  "requestDate": "2026-01-15T10:00:00",
+  "previousBalance": 100,
+  "actualBalance": 120,
+  "totalCredit": 50,
+  "totalDebit": 30,
+  "availableBalance": 120,
+  "transactionsGrouped": [
+    {
+      "date": "2026-01-10",
+      "transactions": [
+        { "description": "RESGATE EXEMPLO", "value": 50 },
+        { "description": "TAXA EXEMPLO", "value": -30, "date": "2026-01-11" }
+      ]
+    }
+  ],
+  "remuneratedValue": null,
+  "allowFromCache": true,
+  "titular": true
+}

@@ -1,0 +1,59 @@
+{
+  "investment": {
+    "balance": {
+      "statementAccount": {
+        "consolidatedDate": "2026-01-15T00:00:00",
+        "total": 4000.0,
+        "investmentAccountBalance": 0,
+        "transitAmount": null,
+        "totalInvested": 3500.5,
+        "performance": { "accumulatedGain": 350.0, "accumulatedYield": 9.5, "performancePeriodDescription": "Rentabilidade desde o início" },
+        "blockedAmount": 0,
+        "availableAmount": 499.5,
+        "creditLimit": { "available": 100.5, "leverage": 0.0, "availableLeverage": 0.0, "blocked": 0, "balance": 0 },
+        "remuneratedBalance": { "remuneratedBalanceEnabled": true, "remuneratedValue": 0 },
+        "futureTransactionsAmount": 0
+      },
+      "futureTransactions": { "totalAmountNextDays": 0, "currentDate": null, "futureTransactions": [] }
+    },
+    "futureTransactions": { "totalAmountNextDays": 0, "currentDate": null, "futureTransactions": [] }
+  },
+  "banking": {
+    "bankingAccount": { "balance": 1234.56, "balanceWithOverdraftLimit": 1234.56, "hasOverDraftLimit": false, "overdraftLimit": 0 },
+    "bankingCreditCard": [
+      { "cardType": "BLACK", "lastFourDigitis": null, "availableLimit": 8000.25, "usedLimit": 1999.75, "invoice": 1500.1, "isUnlimited": false }
+    ],
+    "hasConsentBanking": true,
+    "hasConsentProduct": true,
+    "hasBankingAccount": true
+  },
+  "offshore": null,
+  "openFinance": {
+    "investmentAgregator": {
+      "totalAmount": 1000.0,
+      "investments": [
+        { "institution": { "name": "INSTITUICAO A", "logoUrl": "https://example.com/a.png", "totalAmount": 600 } },
+        { "institution": { "name": "INSTITUICAO B", "logoUrl": "https://example.com/b.png", "totalAmount": 400 } }
+      ]
+    },
+    "bankingAgregator": {
+      "customerId": "0",
+      "totalAmount": { "number": 2000.5, "text": "2000.50", "currency": "BR" },
+      "brands": [
+        {
+          "brandName": "BCO",
+          "compeCode": "000",
+          "logo": "https://example.com/l.png",
+          "organizationId": "00000000-0000-0000-0000-000000000000",
+          "accounts": [
+            { "type": "CONTA_DEPOSITO", "typeAccount": "CORRENTE", "number": "123456789", "checkDigit": "0", "branchCode": "0001", "accountId": "", "accountName": "CONTA EXEMPLO", "balance": { "number": 765.94, "text": "765.94", "currency": "BR" }, "blockedAmount": { "number": 0, "text": "0", "currency": "BR" }, "overdraftLimit": { "number": 0, "text": "0", "currency": "BR" }, "balanceWithOverdraftLimit": { "number": 765.94, "text": "765.94", "currency": "BR" }, "feedbacks": [] }
+          ]
+        }
+      ],
+      "feedbacks": [{ "type": "CONSENT_EXPIRING", "message": "Renove o consentimento", "description": "", "alertType": "WARNING", "isActionAllowed": true }],
+      "totalAmountOtherInstitutions": { "number": 765.94, "text": "765.94", "currency": "BR" }
+    }
+  },
+  "pme": null,
+  "enableAdvisorOffshore": false
+}

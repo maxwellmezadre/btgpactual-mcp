@@ -1,0 +1,22 @@
+# Fixtures
+
+Os arquivos em `investments/` são **sintéticos**: reproduzem a estrutura exata
+(nomes de chaves, aninhamento, tipos) das respostas reais do canal investments
+do BTG, capturadas numa sessão real em 03/10/2026, mas todos os valores, nomes,
+códigos e números de conta são inventados. Nenhum dado de cliente entra no
+repositório.
+
+As identidades financeiras são coerentes de propósito, para que os testes as
+verifiquem: soma das posições igual ao valor da classe (cripto com 50 centavos
+de diferença, dentro da tolerância de 1%), soma das classes igual ao total,
+saldo anterior + créditos − débitos igual ao saldo atual.
+
+| Arquivo | Endpoint de origem |
+| --- | --- |
+| `investments/home.json` | `statement-position/home` |
+| `investments/allocation.json` | `statement-position/allocation/{conta}/type/MARKET/summary` |
+| `investments/statement.json` | `account-statement/period/{N}/history/grouped` |
+
+As linhas de `statement.json` usam um formato provável, não confirmado: a
+captura real veio sem movimentação. As capturas reais ficam em `task/captures/`
+(fora do git) e são verificadas por `test/local/captures.local.test.ts`.

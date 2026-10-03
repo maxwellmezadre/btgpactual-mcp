@@ -1,0 +1,59 @@
+{
+  "accountNumber": "000000001",
+  "positionDate": "2026-01-15T00:00:00",
+  "totalAmmount": 3500.5,
+  "groupType": "MARKET",
+  "summary": [
+    {
+      "id": "RV",
+      "name": "Renda Variável",
+      "positionDate": "2026-01-15T00:00:00",
+      "positionValue": 1500.0,
+      "performance": { "accumulatedYield": 12.5, "accumulatedGain": 150.0 },
+      "assets": {
+        "_type": "market",
+        "equity": {
+          "equityStock": { "total": null, "equityStockPositions": [] },
+          "equityStructuredProduct": { "structuredProductsPositions": null, "total": null },
+          "equityETF": {
+            "total": 1500.0,
+            "equityStockPositions": [
+              { "ticker": "ETFA11", "description": "ETF EXEMPLO A", "isinCode": "BRETFAXXX001", "securityCode": 101, "quantity": 10, "availableQuantity": 10, "averagePrice": 90.0, "marketPrice": 100.0, "grossValue": 1000.0, "investedValue": 900.0, "gain": 100.0, "yield": 11.1111, "profitability": 3.2, "initialInvestimentValue": 0, "costPrice": 0, "incomeTax": 0, "tickerInfo": { "lastTradePrice": 100.0 }, "equityCollateralPositions": null },
+              { "ticker": "ETFB11", "description": "ETF EXEMPLO B", "isinCode": "BRETFBXXX002", "securityCode": 102, "quantity": 5, "availableQuantity": 5, "averagePrice": 90.0, "marketPrice": 100.0, "grossValue": 500.0, "investedValue": 450.0, "gain": 50.0, "yield": 11.1111, "initialInvestimentValue": 0, "costPrice": 0, "incomeTax": 0 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "RF",
+      "name": "Renda Fixa",
+      "positionDate": "2026-01-15T00:00:00",
+      "positionValue": 1500.0,
+      "performance": { "accumulatedYield": 8.0, "accumulatedGain": 100.0 },
+      "assets": {
+        "_type": "market",
+        "fixedIncomes": [
+          { "ticker": "CDB EXEMPLO", "issuer": "BANCO EXEMPLO", "securityCode": "CDB123", "cetipCode": "CDB0000001", "grossValue": 1500.0, "netValue": 1480.0, "incomeTax": 15.0, "iofTax": 5.0, "totalInitialInvestment": 1400.0, "applicationValue": 1500.0, "accumulatedGain": 100.0, "averageCostPrice": 1400, "price": 1500.0, "quantity": 1, "yield": 13.25, "indexYieldRate": "110,00% CDI", "referenceIndexName": "CDI", "maturityDate": "2028-05-02T00:00:00", "marketValue": 0, "fixedIncomeAcquisitions": { "0": { "quantity": 1 } } }
+        ]
+      }
+    },
+    {
+      "id": "CRY",
+      "name": "Criptoativos",
+      "positionDate": "2026-01-15T00:00:00",
+      "positionValue": 500.5,
+      "performance": { "accumulatedYield": 25.0, "accumulatedGain": 100.0 },
+      "assets": {
+        "_type": "market",
+        "cryptoAssets": {
+          "crypto": [
+            { "asset": { "initials": "BTC", "labelName": "Bitcoin", "code": 1, "value": 500000.0 }, "quantity": 0.001, "averagePrice": 400000.0, "costBasis": 400.0, "grossFinancial": 500.0, "financial": 500.0, "puclosing": 490000.0, "marketPrice": null, "performance": { "gain": 100.0, "yield": 25.0, "date": "2026-01-15T00:00:00" }, "acquisition": { "0": { "quantity": 0.001 } } }
+          ],
+          "cryptoCoinRecommendedPortfolio": []
+        }
+      }
+    }
+  ],
+  "isAccountSinistred": false
+}
