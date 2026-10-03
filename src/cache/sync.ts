@@ -19,14 +19,38 @@ import type { BaseSnapshotKind, CacheRepo, SnapshotKind } from "./repo.js";
 // over the stored raw payloads with no network at all.
 
 export type SyncParts = "all" | "investments" | "banking";
-export type SyncOptions = { parts?: SyncParts; reparse?: boolean; periodDays?: number };
+export type SyncOptions = {
+  parts?: SyncParts;
+  reparse?: boolean;
+  periodDays?: number;
+  /**
+   * Stop at a phase boundary once this much time went by, and say `done:
+   * false`; the next call resumes. Keeps each MCP call short. Default: no limit.
+   */
+  budgetMs?: number;
+};
 export type StepResult = { step: string; ok: boolean; detail?: string; error?: string };
 export type SyncReport = {
   mode: "live" | "reparse";
+  /** False while phases remain: call `sync` again (same `parts`) to continue. */
+  done: boolean;
+  /** The phase the next call will run. */
+  next?: Phase;
   steps: StepResult[];
   account: string | null;
   stats: ReturnType<CacheRepo["stats"]>;
 };
+
+/** The units a sync is split into; each runs to the end once started. */
+export type Phase = "investments" | "cards" | "statement";
+const PHASES: Record<SyncParts, Phase[]> = {
+  all: ["investments", "cards", "statement"],
+  investments: ["investments"],
+  banking: ["cards", "statement"],
+};
+/** A half-finished sync older than this starts over instead of resuming. */
+export const CURSOR_TTL_MS = 30 * 60_000;
+type Cursor = { parts: SyncParts; next: Phase; at: number };
 
 /** 30 pages x 10 rows: far beyond the default statement period. */
 export const MAX_STATEMENT_PAGES = 30;
@@ -150,76 +174,101 @@ export async function runSync(ctx: Ctx, opts: SyncOptions = {}): Promise<SyncRep
 
   if (opts.reparse) {
     reparse(repo, steps);
-    return { mode: "reparse", steps, account: ctx.config.account ?? null, stats: repo.stats() };
+    return { mode: "reparse", done: true, steps, account: ctx.config.account ?? null, stats: repo.stats() };
   }
 
   const parts = opts.parts ?? "all";
   const client = ctx.client();
   const now = () => new Date(ctx.now());
+  const phases = PHASES[parts];
 
-  if (parts !== "banking") {
-    const json = async (kind: keyof typeof JSON_INGEST, path: string) =>
-      step(steps, kind, async () => JSON_INGEST[kind](repo, (await client.apiGet(path)).body, now()));
-    await json("home", HOME);
-    await json("balance_detail", BALANCE_DETAIL);
-    const account = client.account();
-    if (account) await json("allocation", allocationSummary(account));
-    else steps.push({ step: "allocation", ok: false, error: "conta de investimento não descoberta; defina BTG_ACCOUNT" });
-    await json("investment_statement", accountStatement(opts.periodDays ?? 30));
-    await json("future", FUTURE);
-  }
+  // Resume where an interrupted or budgeted sync of the same parts stopped.
+  const saved = repo.getMeta("sync.cursor");
+  const cursor = saved ? (JSON.parse(saved) as Cursor) : null;
+  const resume = cursor && cursor.parts === parts && ctx.now() - cursor.at < CURSOR_TTL_MS ? cursor.next : null;
+  const start = resume ? Math.max(phases.indexOf(resume), 0) : 0;
 
-  if (parts !== "investments") {
-    let months: InvoiceMonth[] = [];
-    let closedMonth: string | null = null;
-    await step(steps, "cards_screen", async () => {
-      const page = await client.render(CARDS.route, { readySelector: CARDS.ready, settleMs: 1500 });
-      months = ingestCardsScreen(repo, page.html, now());
-      closedMonth = repo.getSnapshot<{ invoice: { month: string | null } | null }>("cards_screen")?.data.invoice?.month ?? null;
-      return `${months.length} fatura(s) no gráfico`;
-    });
-    for (const m of clickOrder(months, closedMonth)) {
-      await step(steps, `cards_month:${m.month}`, async () => {
-        const page = await client.interact({
-          locate: monthLocateScript(m.label),
-          done: monthDoneScript(m.label),
-          annotate: MONTH_ANNOTATE,
-          settleMs: 500,
-          label: `a fatura de ${m.label}`,
-        });
-        return `${m.statusLabel}: ${ingestCardsMonth(repo, page.html, now(), m.month)}`;
+  const run: Record<Phase, () => Promise<void>> = {
+    investments: async () => {
+      const json = async (kind: keyof typeof JSON_INGEST, path: string) =>
+        step(steps, kind, async () => JSON_INGEST[kind](repo, (await client.apiGet(path)).body, now()));
+      await json("home", HOME);
+      await json("balance_detail", BALANCE_DETAIL);
+      const account = client.account();
+      if (account) await json("allocation", allocationSummary(account));
+      else steps.push({ step: "allocation", ok: false, error: "conta de investimento não descoberta; defina BTG_ACCOUNT" });
+      await json("investment_statement", accountStatement(opts.periodDays ?? 30));
+      await json("future", FUTURE);
+    },
+    cards: async () => {
+      let months: InvoiceMonth[] = [];
+      let closedMonth: string | null = null;
+      await step(steps, "cards_screen", async () => {
+        const page = await client.render(CARDS.route, { readySelector: CARDS.ready, settleMs: 1500 });
+        months = ingestCardsScreen(repo, page.html, now());
+        closedMonth = repo.getSnapshot<{ invoice: { month: string | null } | null }>("cards_screen")?.data.invoice?.month ?? null;
+        return `${months.length} fatura(s) no gráfico`;
       });
-    }
-
-    await step(steps, "statement_page", async () => {
-      const first = await client.render(STATEMENT.route, { readySelector: STATEMENT.ready, settleMs: 1000 });
-      let { screen, added } = ingestStatementPage(repo, first.html, now(), 1);
-      let read = screen.entries.length;
-      let page = 1;
-      while (screen.page && screen.page.to < screen.page.total && page < MAX_STATEMENT_PAGES) {
-        try {
-          const next = await client.interact({
-            locate: PAGER_NEXT_LOCATE,
-            done: PAGER_NEXT_DONE,
-            settleMs: 300,
-            label: "a próxima página do extrato",
+      for (const m of clickOrder(months, closedMonth)) {
+        await step(steps, `cards_month:${m.month}`, async () => {
+          const page = await client.interact({
+            locate: monthLocateScript(m.label),
+            done: monthDoneScript(m.label),
+            annotate: MONTH_ANNOTATE,
+            settleMs: 500,
+            label: `a fatura de ${m.label}`,
           });
-          page += 1;
-          const result = ingestStatementPage(repo, next.html, now(), page);
-          screen = result.screen;
-          added += result.added;
-          read += screen.entries.length;
-        } catch (error) {
-          if (fatal(error)) throw error;
-          throw new Error(`parou na página ${page + 1} (${read} linha(s) já salvas): ${message(error)}`);
-        }
+          return `${m.statusLabel}: ${ingestCardsMonth(repo, page.html, now(), m.month)}`;
+        });
       }
-      return `${read} linha(s) em ${page} página(s) (${added} nova(s)), ${screen.page?.total ?? "?"} no período`;
-    });
+    },
+    statement: async () => {
+      await step(steps, "statement_page", async () => {
+        const first = await client.render(STATEMENT.route, { readySelector: STATEMENT.ready, settleMs: 1000 });
+        let { screen, added } = ingestStatementPage(repo, first.html, now(), 1);
+        let read = screen.entries.length;
+        let page = 1;
+        while (screen.page && screen.page.to < screen.page.total && page < MAX_STATEMENT_PAGES) {
+          try {
+            const next = await client.interact({
+              locate: PAGER_NEXT_LOCATE,
+              done: PAGER_NEXT_DONE,
+              settleMs: 300,
+              label: "a próxima página do extrato",
+            });
+            page += 1;
+            const result = ingestStatementPage(repo, next.html, now(), page);
+            screen = result.screen;
+            added += result.added;
+            read += screen.entries.length;
+          } catch (error) {
+            if (fatal(error)) throw error;
+            throw new Error(`parou na página ${page + 1} (${read} linha(s) já salvas): ${message(error)}`);
+          }
+        }
+        return `${read} linha(s) em ${page} página(s) (${added} nova(s)), ${screen.page?.total ?? "?"} no período`;
+      });
+    },
+  };
+
+  const began = ctx.now();
+  const budget = opts.budgetMs ?? Number.POSITIVE_INFINITY;
+  for (let i = start; i < phases.length; i += 1) {
+    const phase = phases[i] as Phase;
+    // Saved before running: an expired session mid-phase resumes right here after `login`.
+    repo.setMeta("sync.cursor", JSON.stringify({ parts, next: phase, at: ctx.now() } satisfies Cursor));
+    await run[phase]();
+    const following = phases[i + 1];
+    // Phases are atomic; stop between them once half the budget is gone.
+    if (following && ctx.now() - began >= budget / 2) {
+      repo.setMeta("sync.cursor", JSON.stringify({ parts, next: following, at: ctx.now() } satisfies Cursor));
+      return { mode: "live", done: false, next: following, steps, account: client.account(), stats: repo.stats() };
+    }
   }
 
+  repo.setMeta("sync.cursor", null);
   if (steps.some((s) => s.ok)) repo.setMeta("sync.last_completed_at", new Date(ctx.now()).toISOString());
-  return { mode: "live", steps, account: client.account(), stats: repo.stats() };
+  return { mode: "live", done: true, steps, account: client.account(), stats: repo.stats() };
 }
 
 export type { SnapshotKind };

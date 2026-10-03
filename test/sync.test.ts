@@ -132,6 +132,50 @@ describe("cache queries", () => {
   });
 });
 
+describe("chunked sync", () => {
+  test("a zero budget runs one phase per call and resumes where it stopped", async () => {
+    const { ctx, calls } = wire();
+    const first = await runSync(ctx, { budgetMs: 0 });
+    expect([first.done, first.next]).toEqual([false, "cards"]);
+    expect(calls.render).toEqual([]);
+    const second = await runSync(ctx, { budgetMs: 0 });
+    expect([second.done, second.next]).toEqual([false, "statement"]);
+    expect(calls.render).toEqual(["/cartoes"]);
+    const third = await runSync(ctx, { budgetMs: 0 });
+    expect(third.done).toBe(true);
+    expect(calls.api.filter((p) => p.endsWith("/home"))).toHaveLength(1); // investments ran once
+    expect(ctx.cache().getMeta("sync.cursor")).toBeNull();
+    expect(ctx.cache().getMeta("sync.last_completed_at")).not.toBeNull();
+  });
+
+  test("an expired session mid-phase resumes that phase on the next call", async () => {
+    let dead = true;
+    const { ctx, calls } = wire({
+      render: async (path) => {
+        calls.render.push(path);
+        if (dead) throw new AuthError("expirou");
+        return { url: path, title: "", html: HTML_BY_ROUTE[path] ?? "" };
+      },
+    });
+    await expect(runSync(ctx)).rejects.toThrow(AuthError);
+    dead = false;
+    calls.api.length = 0;
+    const report = await runSync(ctx);
+    expect(report.done).toBe(true);
+    expect(calls.api).toEqual([]); // investments were not redone
+    expect(report.steps[0]?.step).toBe("cards_screen");
+  });
+
+  test("a different parts value or a stale cursor starts over", async () => {
+    const { ctx } = wire();
+    ctx.cache().setMeta("sync.cursor", JSON.stringify({ parts: "all", next: "statement", at: Date.UTC(2026, 9, 2, 12) - 31 * 60_000 }));
+    const report = await runSync(ctx, { budgetMs: 0 });
+    expect(report.steps[0]?.step).toBe("home");
+    const banking = await runSync(ctx, { parts: "banking", budgetMs: 0 });
+    expect(banking.steps[0]?.step).toBe("cards_screen");
+  });
+});
+
 describe("click order", () => {
   const m = (month: string, label: string) => ({ month, label, status: "paid" as const, statusLabel: "Paga" });
   test("the closed month goes second, never first", () => {

@@ -28,11 +28,13 @@ parâmetros em `TOOLS.md`, ao lado deste arquivo.
    `investments_statement`, `open_finance_summary` e `spending_summary` leem o
    SQLite local, sem rede. Toda resposta traz `asOf`: diga ao usuário de
    quando é o dado. Se a tool disser que nada foi sincronizado, rode `sync`.
-3. **`sync` precisa de sessão ativa** e leva dezenas de segundos (abre um
-   Chrome em segundo plano). A sessão do banco dura pouco: se `sync` falhar
+3. **`sync` precisa de sessão ativa** e roda em fases (investimentos,
+   faturas, extrato). Cada chamada para entre fases depois de ~50 s e devolve
+   `done: false`: chame `sync` de novo, com os mesmos `parts`, até `done:
+   true`. A sessão do banco dura pouco (cerca de duas horas): se `sync` falhar
    por sessão, peça para o usuário rodar `btgpactual login` no terminal (abre
-   uma janela; ele faz o login e o MFA). Você não consegue fazer o login por
-   ele.
+   uma janela; ele faz o login e o MFA) e depois chame `sync` de novo, que
+   retoma da fase onde parou. Você não consegue fazer o login por ele.
 4. **O que cada número significa.** `invoice.total` é o "Valor total da
    fatura" que o próprio BTG mostra; ele não precisa bater com a soma dos
    lançamentos (há saldo anterior, pagamentos e tarifas que não viram linha).

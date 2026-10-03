@@ -94,6 +94,35 @@ const tables: Record<string, (result: unknown) => string> = {
     `${printTable((r as R).groups, [["grupo", (g: R) => g.key], ["compras", (g: R) => g.purchases], ["gasto", (g: R) => g.spent], ["estornos", (g: R) => g.refunds], ["líquido", (g: R) => g.net]])}\ntotal gasto ${(r as R).totals.spent} | líquido ${(r as R).totals.net}`,
 };
 
+/**
+ * The tool stops between phases to keep MCP calls short; the CLI has no such
+ * limit to respect, so it calls again until done, in one browser session,
+ * reporting each step on stderr as it lands.
+ */
+async function syncLoop(args: Record<string, unknown>, asJson: boolean): Promise<void> {
+  try {
+    await withContext(async (ctx) => {
+      const tool = resolveTool(ctx.config.readOnly, "sync");
+      const steps: R[] = [];
+      let result: R = {};
+      for (let round = 0; ; round += 1) {
+        result = (await runTool(tool, compactObject(args), ctx)) as R;
+        for (const s of result.steps as R[]) {
+          steps.push(s);
+          process.stderr.write(`${s.ok ? "  ok " : "  ERR"} ${String(s.step).padEnd(22)} ${s.detail ?? s.error}\n`);
+        }
+        if (result.done || round > 5) break;
+      }
+      const final: R = { ...result, steps };
+      await write(asJson ? JSON.stringify(final, null, 2) : `cache: ${JSON.stringify(final.stats)}`);
+      if (steps.some((s) => !s.ok)) process.exitCode = 1;
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
 export async function runCli(argv: string[], version: string): Promise<void> {
   const program = new Command();
   program
@@ -120,11 +149,11 @@ export async function runCli(argv: string[], version: string): Promise<void> {
     .option("--deep", "Gasta 1 requisição + 1 tela", false)
     .action((o) => run("doctor", { deep: o.deep }));
 
-  program.command("sync").description("Baixa saldos, carteira, faturas e extrato para o cache")
+  program.command("sync").description("Baixa saldos, carteira, faturas e extrato para o cache (repete as fases até terminar)")
     .option("--parts <p>", "all | investments | banking")
     .option("--reparse", "Reprocessa o cache sem rede", false)
     .option("--period-days <n>", "Dias do extrato da conta investimento", num)
-    .action((o) => run("sync", { parts: o.parts, reparse: o.reparse, period_days: o.periodDays }));
+    .action((o) => syncLoop({ parts: o.parts, reparse: o.reparse, period_days: o.periodDays }, json()));
 
   program.command("balance").description("Saldo da conta corrente e da conta investimento")
     .action(() => run("account_balance", {}));

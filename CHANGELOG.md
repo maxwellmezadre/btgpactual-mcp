@@ -27,6 +27,10 @@ Todas as mudanças relevantes deste projeto ficam aqui. O formato segue o
 - Sync clica em cada mês do gráfico de faturas (paga, fechada, aberta e
   futuras) com mouse real e só aceita a lista quando o gráfico confirma o mês;
   pagina o extrato até o fim. Cliques nunca são repetidos.
+- Sync em fases (investimentos, faturas, extrato) com cursor no cache: a tool
+  para entre fases depois de `max_seconds` (padrão 50) e devolve `done:
+  false`; o CLI repete até terminar; uma sessão expirada no meio retoma da
+  mesma fase depois do `login`.
 - Cache SQLite com valores em centavos e as respostas brutas, e `sync
   --reparse` para reprocessar sem rede.
 - 15 tools, iguais no MCP e no CLI: `auth_status`, `login`, `doctor`, `sync`,

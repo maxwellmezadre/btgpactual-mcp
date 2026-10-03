@@ -63,7 +63,7 @@ automático da fatura) vêm à parte, com a recorrência `N/total`.
 | `invoice_lines` | Lançamentos; o mês inteiro é substituído a cada sync daquela fatura |
 | `invoice_holders` | Gasto por portador de cada mês, como o BTG mostra |
 | `statement_entries` | Extrato; acumula entre syncs, com id estável (hash) |
-| `meta` | Versão do esquema, último sync, pausa anti-bot |
+| `meta` | Versão do esquema, último sync, cursor do sync em fases, pausa anti-bot |
 
 `sync --reparse` reprocessa `snapshots.raw` com os parsers atuais, sem rede,
 usando o horário da captura como referência para datas sem ano.

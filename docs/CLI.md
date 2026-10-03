@@ -21,7 +21,11 @@ de login antes.
 | --- | --- | --- |
 | `sync` | `--parts all\|investments\|banking`, `--reparse`, `--period-days <n>` | Atualiza o cache |
 
-`--reparse` reprocessa o que já está salvo, sem rede.
+`--reparse` reprocessa o que já está salvo, sem rede. O sync roda em três
+fases (investimentos, faturas, extrato); a tool para entre elas para manter
+cada chamada MCP curta, e o comando `sync` do CLI repete sozinho até terminar,
+mostrando cada etapa no stderr. Se a sessão cair no meio, depois do `login` o
+próximo `sync` retoma da fase em que parou.
 
 ## Conta corrente
 

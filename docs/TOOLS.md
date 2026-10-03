@@ -9,7 +9,7 @@ O servidor expõe **15 tools**. Com `BTG_READ_ONLY=1` as 3 que escrevem algo (se
 | [`auth_status`](#authstatus) | — | Diz se há uma sessão do BTG salva e o que ela cobre (marcadores de sessão presentes, conta de investimento, id… |
 | [`login`](#login) | sim | Salva a sessão do BTG. Abre uma janela dedicada do Google Chrome no app, espera você fazer o login (senha, "nã… |
 | [`doctor`](#doctor) | — | Diagnóstico por camada: configuração, sessão salva, cache, navegador e, com deep=true, o canal investments (1 … |
-| [`sync`](#sync) | sim | Baixa os dados do BTG para o cache local: saldos, carteira, extrato da conta investimento e futuros (canal inv… |
+| [`sync`](#sync) | sim | Baixa os dados do BTG para o cache local em 3 fases: investimentos (saldos, carteira, extrato da conta investi… |
 | [`account_balance`](#accountbalance) | — | Saldo da conta corrente (com e sem o limite do cheque especial) e da conta investimento (total, investido, dis… |
 | [`account_statement`](#accountstatement) | — | Extrato da conta corrente (Pix, transferências, contas, compras no débito) linha a linha, com totais de entrad… |
 | [`cards_list`](#cardslist) | — | Cartões de crédito do BTG: limite total, usado, disponível e valor da fatura, mais quanto o titular e cada car… |
@@ -57,7 +57,7 @@ Diagnóstico por camada: configuração, sessão salva, cache, navegador e, com 
 
 ## `sync`
 
-Baixa os dados do BTG para o cache local: saldos, carteira, extrato da conta investimento e futuros (canal investments, ~5 requisições, segundos) e as telas de cartões e da conta corrente (2 telas, dezenas de segundos; a primeira chamada abre o Chrome em segundo plano). Precisa de sessão ativa: se falhar por sessão, rode `login`. `reparse` reprocessa o que já está salvo, sem rede.
+Baixa os dados do BTG para o cache local em 3 fases: investimentos (saldos, carteira, extrato da conta investimento; segundos), faturas do cartão (cada mês do gráfico; ~45 s) e extrato da conta corrente (todas as páginas; ~25 s). Cada chamada para entre fases ao passar de `max_seconds` e devolve done=false: chame de novo com os mesmos `parts` até done=true. Precisa de sessão ativa; se falhar por sessão, peça `login` ao usuário. `reparse` reprocessa o que já está salvo, sem rede.
 
 **Escreve em disco/cache:** sim
 
@@ -66,6 +66,7 @@ Baixa os dados do BTG para o cache local: saldos, carteira, extrato da conta inv
 | `parts` | `all` \| `investments` \| `banking` | — | all (padrão), investments (rápido, só JSON) ou banking (telas de cartão e extrato) |
 | `reparse` | boolean | — | Reprocessa o cache com os parsers atuais, sem rede |
 | `period_days` | integer (≥ 1, ≤ 365) | — | Dias do extrato da conta investimento (default 30) |
+| `max_seconds` | integer (≥ 10, ≤ 900) | — | Para entre fases depois deste tempo e devolve done=false (default 50) |
 
 ## `account_balance`
 
