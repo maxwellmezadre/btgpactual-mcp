@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json" with { type: "json" };
@@ -84,8 +84,11 @@ async function main(): Promise<void> {
   step(`2/4 instalando em ${BIN}`);
   if (!dry) {
     mkdirSync(PREFIX, { recursive: true });
-    copyFileSync(join(ROOT, NAME), BIN);
-    chmodSync(BIN, 0o755);
+    // Copy beside it and rename: overwriting a running Mach-O in place gets the
+    // MCP servers that use it SIGKILLed by macOS (code signature mismatch).
+    copyFileSync(join(ROOT, NAME), `${BIN}.new`);
+    chmodSync(`${BIN}.new`, 0o755);
+    renameSync(`${BIN}.new`, BIN);
   }
   ok(BIN);
   if (!(process.env.PATH ?? "").split(":").includes(PREFIX)) {
