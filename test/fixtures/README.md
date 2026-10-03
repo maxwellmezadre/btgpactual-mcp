@@ -20,3 +20,13 @@ saldo anterior + créditos − débitos igual ao saldo atual.
 As linhas de `statement.json` usam um formato provável, não confirmado: a
 captura real veio sem movimentação. As capturas reais ficam em `task/captures/`
 (fora do git) e são verificadas por `test/local/captures.local.test.ts`.
+
+## Banking (HTML renderizado)
+
+`banking/cartoes.html` e `banking/conta-corrente.html` são HTML **escrito à
+mão** com as mesmas classes BEM das telas reais (`/cartoes` e
+`/conta-corrente`, capturadas em 03/10/2026) e dados inventados. Cobrem: grupo
+de dia sem cabeçalho herdando a data anterior, parcela `(N/T)` no fim do
+título, cartão adicional com nome do portador, compra internacional, compra
+cancelada, pagamento de fatura, ano explícito no `h2`, lançamento agendado com
+recorrência e duas linhas idênticas no mesmo dia.

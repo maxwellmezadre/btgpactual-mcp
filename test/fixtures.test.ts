@@ -32,6 +32,14 @@ describe("fixtures carry no personal data", () => {
     }
   });
 
+  const cards = join(CAPTURES, "banking-cartoes.html");
+  test.skipIf(!existsSync(cards))("no real additional cardholder name appears in any fixture", async () => {
+    const { parseCardsScreen } = await import("../src/btg/banking/cards.js");
+    const names = parseCardsScreen(readFileSync(cards, "utf8"), new Date())
+      .holderTotals.flatMap((h) => (h.holderName ? [h.holderName] : []));
+    for (const name of names) for (const { path, text } of contents) expect(text.includes(name), path).toBe(false);
+  });
+
   const allocation = join(CAPTURES, "investments-allocation-summary.json");
   test.skipIf(!existsSync(allocation))("the real account number appears in no fixture", () => {
     const real = String((JSON.parse(readFileSync(allocation, "utf8")) as { accountNumber?: string }).accountNumber ?? "");

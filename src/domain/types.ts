@@ -53,35 +53,22 @@ export type InvestmentAccount = {
   remunerated: { enabled: boolean; valueCents: number | null } | null;
 };
 
-export type Card = {
-  cardId: string;
-  name: string;
-  variant: string | null;
-  holder: Holder;
-  holderName: string | null;
-  last4: string | null;
-  limitCents: number | null;
-  usedCents: number | null;
-  availableCents: number | null;
-  invoiceCents: number | null;
-  dueDate: string | null;
-  bestPurchaseDay: number | null;
-  cardType: string | null;
-  isAdditional: boolean;
-};
+/** How a card timeline line reads on screen. */
+export type CardTransactionKind =
+  | "purchase"
+  | "installment"
+  | "international"
+  | "cancelled"
+  | "payment"
+  | "other";
 
-export type Invoice = {
-  cardId: string;
-  month: string;
-  status: InvoiceStatus;
-  statusLabel: string | null;
-  totalCents: number | null;
-  dueDate: string | null;
-};
-
+/**
+ * One line of "Lançamentos na fatura". `amountCents` keeps the sign the app
+ * shows: negative is a charge, positive is a credit (invoice payment, refund).
+ * Installment purchases show their ORIGINAL purchase date.
+ */
 export type InvoiceTransaction = {
-  cardId: string;
-  month: string;
+  invoiceMonth: string | null;
   position: number;
   date: string | null;
   merchant: string;
@@ -91,18 +78,56 @@ export type InvoiceTransaction = {
   installmentTotal: number | null;
   holder: Holder;
   holderName: string | null;
-  category: string | null;
+  kind: CardTransactionKind;
 };
 
+export type InvoiceMonth = { month: string; status: InvoiceStatus; statusLabel: string };
+
+export type HolderTotal = { holder: Holder; holderName: string | null; totalCents: number | null };
+
+/** What the /cartoes screen shows for the invoice currently selected in it. */
+export type CardsScreen = {
+  invoice: {
+    month: string | null;
+    status: InvoiceStatus;
+    statusLabel: string | null;
+    totalCents: number | null;
+  } | null;
+  /** Invoice timeline (months and statuses); per-month totals live in the chart SVG, not the DOM. */
+  months: InvoiceMonth[];
+  holderTotals: HolderTotal[];
+  transactions: InvoiceTransaction[];
+  warnings: string[];
+};
+
+/** One checking account statement line. Sign as shown: negative leaves the account. */
 export type StatementEntry = {
+  /** Stable across pages and syncs: hash of date, time, counterparty, amount, description, occurrence. */
   id: string;
   date: string | null;
+  time: string | null;
   counterparty: string | null;
   category: string | null;
   description: string | null;
-  time: string | null;
   amountCents: number | null;
-  balanceDayCents: number | null;
+};
+
+export type ScheduledEntry = {
+  date: string | null;
+  counterparty: string | null;
+  description: string | null;
+  amountCents: number | null;
+  /** "Pix agendado (4/90)" -> { n: 4, total: 90 }. */
+  recurrence: { n: number; total: number } | null;
+};
+
+export type StatementScreen = {
+  entries: StatementEntry[];
+  dailyBalances: Array<{ date: string; balanceCents: number | null }>;
+  scheduled: ScheduledEntry[];
+  /** "1 - 10 de 57 itens"; null when the pager is not rendered. */
+  page: { from: number; to: number; total: number } | null;
+  warnings: string[];
 };
 
 /**

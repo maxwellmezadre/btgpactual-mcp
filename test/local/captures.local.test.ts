@@ -57,3 +57,57 @@ describe.skipIf(!has("home"))("real captures: investments", () => {
     expect(parseFutureTransactions(load("future")).totalNextDaysCents).not.toBeNull();
   });
 });
+
+import { parseCardsScreen } from "../../src/btg/banking/cards.js";
+import { parseStatementScreen } from "../../src/btg/banking/statement.js";
+
+const hasHtml = (name: string) => existsSync(join(DIR, `banking-${name}.html`));
+const loadHtml = (name: string) => readFileSync(join(DIR, `banking-${name}.html`), "utf8");
+
+describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
+  const screen = parseCardsScreen(loadHtml("cartoes"), new Date());
+  test("every line parses: date, amount, no warnings", () => {
+    expect(screen.transactions.length).toBeGreaterThan(0);
+    expect(screen.warnings).toEqual([]);
+  });
+  test("installments carry N/T and only installments do", () => {
+    for (const t of screen.transactions) {
+      if (t.kind === "installment") {
+        expect(t.installmentN).not.toBeNull();
+        expect(t.installmentN ?? 0).toBeLessThanOrEqual(t.installmentTotal ?? 0);
+      } else expect(t.installmentN).toBeNull();
+    }
+  });
+  test("charges are negative, payments positive, nothing dated in the future", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const t of screen.transactions) {
+      if (["purchase", "installment", "international"].includes(t.kind)) expect(t.amountCents ?? 0).toBeLessThan(0);
+      if (t.kind === "payment") expect(t.amountCents ?? 0).toBeGreaterThan(0);
+      expect((t.date ?? "") <= today).toBe(true);
+    }
+  });
+  test("additional cardholder lines are named and add up to the additional total", () => {
+    const additional = screen.holderTotals.find((h) => h.holder === "adicional");
+    const lines = screen.transactions.filter((t) => t.holder === "adicional");
+    expect(lines.every((t) => t.holderName)).toBe(true);
+    if (additional && lines.length) {
+      const sum = -lines.filter((t) => t.kind !== "payment").reduce((a, t) => a + (t.amountCents ?? 0), 0);
+      expect(Math.abs(sum - (additional.totalCents ?? 0))).toBeLessThanOrEqual(2);
+    }
+  });
+  test("invoice header and months resolve", () => {
+    expect(screen.invoice?.month).toMatch(/^\d{4}-\d{2}$/);
+    expect(screen.invoice?.totalCents).not.toBeNull();
+    expect(screen.months.length).toBeGreaterThan(0);
+  });
+});
+
+describe.skipIf(!hasHtml("conta-corrente"))("real captures: statement screen", () => {
+  const screen = parseStatementScreen(loadHtml("conta-corrente"), new Date());
+  test("rows complete, ids unique, pager read", () => {
+    expect(screen.warnings).toEqual([]);
+    expect(screen.entries.every((e) => e.date && e.time && e.amountCents !== null)).toBe(true);
+    expect(new Set(screen.entries.map((e) => e.id)).size).toBe(screen.entries.length);
+    expect(screen.page?.total ?? 0).toBeGreaterThanOrEqual(screen.entries.length);
+  });
+});

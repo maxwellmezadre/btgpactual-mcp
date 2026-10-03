@@ -1,0 +1,53 @@
+<html><body>
+<div class="card-bill__content">
+  <div><h3 class="card-bill__subtitle">Fatura de outubro</h3>
+    <orq-badge class="orq-badge orq-badge--info"><span class="orq-badge__text">Fatura fechada</span></orq-badge></div>
+  <div class="card-bill__bill"><p>R$ 250,00</p><p>Valor total da fatura</p>
+    <orq-button class="card-bill__bill__button"><button class="orq-button"><span class="orq-button__label-wrapper">Gerar Boleto</span></button></orq-button></div>
+</div>
+<btg-invoice-chart><section class="section-chart"><h1 class="section-chart__title">Suas faturas</h1>
+  <div class="highcharts-axis-labels highcharts-xaxis-labels">
+    <span><div><span>Set</span><div><span>Paga</span></div></div></span>
+    <span><div><span>Out</span><div><span>Fechada</span></div></div></span>
+    <span><div><span>Nov</span><div><span>Aberta</span></div></div></span>
+    <span><div><span>Jan/2027</span><div><span>Futura</span></div></div></span>
+  </div></section></btg-invoice-chart>
+<btg-card-list-invoice><section class="section-card-list"><h1 class="section-card-list__title">Gastos por cartão</h1>
+  <orq-card-list-item><div class="card-list__item"><span class="card-list__title"><span class="card-list__title-text">Titular</span></span><span class="card-list__caption">R$ 300,00</span></div></orq-card-list-item>
+  <orq-card-list-item><div class="card-list__item"><span class="card-list__title"><span class="card-list__title-text">PESSOA EXEMPLO</span></span><span class="card-list__caption">R$ 100,00</span></div></orq-card-list-item>
+</section></btg-card-list-invoice>
+<app-timeline-card><section class="section-timeline-card"><h1 class="section-timeline-card__title">Lançamentos na fatura</h1>
+  <div class="timeline-container">
+    <div>
+      <div class="timeline-date"><h2>Ontem</h2><h4>01 de Outubro</h4></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">LOJA ALFA</p><p class="timeline-item__subtitle">Compra no crédito</p><p class="timeline-item__value">- R$ 50,00</p>
+      </div></div></timeline-item></div>
+    </div>
+    <div><div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+      <p class="timeline-item__title">LOJA BETA</p><p class="timeline-item__subtitle">Compra no crédito no cartão adicional de PESSOA EXEMPLO</p><p class="timeline-item__value">- R$ 100,00</p>
+    </div></div></timeline-item></div></div>
+    <div>
+      <div class="timeline-date"><h2>15 de Setembro</h2><h4>15 de Setembro</h4></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">LOJA GAMA (3/10)</p><p class="timeline-item__subtitle">Compra no crédito parcelada</p><p class="timeline-item__value">- R$ 30,00</p>
+      </div></div></timeline-item></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">Pagamento recebido</p><p class="timeline-item__subtitle">Fatura paga</p><p class="timeline-item__value">+ R$ 1.500,00</p>
+      </div></div></timeline-item></div>
+    </div>
+    <div>
+      <div class="timeline-date"><h2>29 de Dezembro de 2025</h2><h4>29 de Dezembro</h4></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">LOJA DELTA (10/12)</p><p class="timeline-item__subtitle">Compra no crédito parcelada</p><p class="timeline-item__value">- R$ 20,00</p>
+      </div></div></timeline-item></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">LOJA EPSILON</p><p class="timeline-item__subtitle">Compra no crédito internacional</p><p class="timeline-item__value">- R$ 200,00</p>
+      </div></div></timeline-item></div>
+      <div><timeline-item><div class="timeline-item"><div class="timeline-item__content">
+        <p class="timeline-item__title">LOJA ZETA</p><p class="timeline-item__subtitle">Compra no crédito cancelada pelo estabelecimento</p><p class="timeline-item__value">+ R$ 10,00</p>
+      </div></div></timeline-item></div>
+    </div>
+  </div>
+</section></app-timeline-card>
+</body></html>
