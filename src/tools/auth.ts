@@ -9,8 +9,8 @@ import { compactObject, defineTool } from "./define.js";
 // true` spends exactly one investments request to confirm the app still
 // accepts the session.
 
-/** Observed: a BTG web session stops being accepted after roughly two hours. */
-export const LIKELY_EXPIRED_HOURS = 2;
+/** Observed live: a BTG web session dies about one hour after login, used or not. */
+export const LIKELY_EXPIRED_HOURS = 1;
 
 export type AuthStatus = {
   loggedIn: boolean;

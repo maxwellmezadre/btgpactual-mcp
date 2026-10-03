@@ -56,7 +56,7 @@ Nenhuma senha é gravada, porque a ferramenta nunca a vê.
 
 ## Ciclo de vida
 
-A sessão do banco expira depois de algum tempo sem uso. O cache não expira: as
+A sessão do banco expira cerca de uma hora depois do login, mesmo em uso (medido em outubro de 2026); usar não a renova. O cache não expira: as
 perguntas continuam respondidas com os dados do último `sync`. Quando o `sync`
 disser que a sessão caiu, rode `btgpactual login` de novo. Fechar a janela de
 login não derruba a sessão copiada.

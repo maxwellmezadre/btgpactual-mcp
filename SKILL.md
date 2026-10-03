@@ -31,7 +31,7 @@ parâmetros em `TOOLS.md`, ao lado deste arquivo.
 3. **`sync` precisa de sessão ativa** e roda em fases (investimentos,
    faturas, extrato). Cada chamada para entre fases depois de ~50 s e devolve
    `done: false`: chame `sync` de novo, com os mesmos `parts`, até `done:
-   true`. A sessão do banco dura pouco (cerca de duas horas): se `sync` falhar
+   true`. A sessão do banco dura cerca de uma hora a partir do login, mesmo em uso: se `sync` falhar
    por sessão, peça para o usuário rodar `btgpactual login` no terminal (abre
    uma janela; ele faz o login e o MFA) e depois chame `sync` de novo, que
    retoma da fase onde parou. Você não consegue fazer o login por ele.
