@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { LaunchBrowser, LaunchOptions } from "./types.js";
 
 // Playwright lives behind a dynamic import so that starting the MCP server, or
@@ -35,10 +38,24 @@ export function launchOptions(opts: LaunchOptions): PlaywrightLaunchOptions {
   };
 }
 
+/** Chrome refuses a profile another live Chrome holds (a second MCP server, the CLI, `login`'s check). */
+export function isProfileLocked(error: unknown): boolean {
+  return /ProcessSingleton|SingletonLock/.test((error as Error)?.message ?? "");
+}
+
 export const launchWithPlaywright: LaunchBrowser = async (opts) => {
   const { chromium } = await import("playwright-core");
-  return (await chromium.launchPersistentContext(
-    opts.profileDir,
-    launchOptions(opts) as never,
-  )) as never;
+  const launch = (dir: string) => chromium.launchPersistentContext(dir, launchOptions(opts) as never);
+  try {
+    return (await launch(opts.profileDir)) as never;
+  } catch (error) {
+    if (!isProfileLocked(error)) throw error;
+    // The session lives in the snapshot the bridge restores, not in the
+    // profile, so a throwaway profile reads exactly the same. ponytail: a crash
+    // leaves the temp dir behind for the OS to reap.
+    const dir = mkdtempSync(join(tmpdir(), "btgpactual-profile-"));
+    const context = await launch(dir);
+    context.on("close", () => rmSync(dir, { recursive: true, force: true }));
+    return context as never;
+  }
 };
