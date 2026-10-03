@@ -64,13 +64,24 @@ import { parseStatementScreen } from "../../src/btg/banking/statement.js";
 const hasHtml = (name: string) => existsSync(join(DIR, `banking-${name}.html`));
 const loadHtml = (name: string) => readFileSync(join(DIR, `banking-${name}.html`), "utf8");
 
+/**
+ * Bun runs a describe() body even when the block is skipped, so nothing may
+ * touch the captures at collection time: parse lazily, once, inside a test.
+ */
+function lazy<T>(make: () => T): () => T {
+  let value: T | undefined;
+  return () => (value ??= make());
+}
+
 describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
-  const screen = parseCardsScreen(loadHtml("cartoes"), new Date());
+  const get = lazy(() => parseCardsScreen(loadHtml("cartoes"), new Date()));
   test("every line parses: date, amount, no warnings", () => {
+    const screen = get();
     expect(screen.transactions.length).toBeGreaterThan(0);
     expect(screen.warnings).toEqual([]);
   });
   test("installments carry N/T and only installments do", () => {
+    const screen = get();
     for (const t of screen.transactions) {
       if (t.kind === "installment") {
         expect(t.installmentN).not.toBeNull();
@@ -79,6 +90,7 @@ describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
     }
   });
   test("charges are negative, payments positive, nothing dated in the future", () => {
+    const screen = get();
     const today = new Date().toISOString().slice(0, 10);
     for (const t of screen.transactions) {
       if (["purchase", "installment", "international"].includes(t.kind)) expect(t.amountCents ?? 0).toBeLessThan(0);
@@ -87,6 +99,7 @@ describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
     }
   });
   test("additional cardholder lines are named and add up to the additional total", () => {
+    const screen = get();
     const additional = screen.holderTotals.find((h) => h.holder === "adicional");
     const lines = screen.transactions.filter((t) => t.holder === "adicional");
     expect(lines.every((t) => t.holderName)).toBe(true);
@@ -96,6 +109,7 @@ describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
     }
   });
   test("invoice header and months resolve", () => {
+    const screen = get();
     expect(screen.invoice?.month).toMatch(/^\d{4}-\d{2}$/);
     expect(screen.invoice?.totalCents).not.toBeNull();
     expect(screen.months.length).toBeGreaterThan(0);
@@ -103,8 +117,9 @@ describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
 });
 
 describe.skipIf(!hasHtml("conta-corrente"))("real captures: statement screen", () => {
-  const screen = parseStatementScreen(loadHtml("conta-corrente"), new Date());
+  const get = lazy(() => parseStatementScreen(loadHtml("conta-corrente"), new Date()));
   test("rows complete, ids unique, pager read", () => {
+    const screen = get();
     expect(screen.warnings).toEqual([]);
     expect(screen.entries.every((e) => e.date && e.time && e.amountCents !== null)).toBe(true);
     expect(new Set(screen.entries.map((e) => e.id)).size).toBe(screen.entries.length);
