@@ -1,4 +1,5 @@
 import type { BrowserChannel } from "../config.js";
+import type { CookieRecord } from "../session/snapshot.js";
 
 // The smallest slice of Playwright this project uses. Declaring it here instead
 // of importing Playwright's types buys two things: the MCP cold path never
@@ -32,6 +33,8 @@ export type BrowserContextLike = {
   addInitScript(script: string): Promise<void>;
   /** Resource blocking: images, fonts and media are aborted; scripts never are. */
   route?(pattern: string, handler: (route: RouteLike) => unknown): Promise<void>;
+  /** Seeds auth cookies captured from the user's real browser (attach login). */
+  addCookies?(cookies: CookieRecord[]): Promise<void>;
   close(): Promise<void>;
 };
 

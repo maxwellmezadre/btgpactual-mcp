@@ -24,8 +24,18 @@ export const ConfigSchema = Type.Object({
   sessionPath: Type.String({ minLength: 1 }),
   keyPath: Type.String({ minLength: 1 }),
   dbPath: Type.String({ minLength: 1 }),
-  /** Chrome profile shared by the interactive login and the headless bridge. */
+  /** Chrome profile of the headless bridge (data reads). */
   browserProfileDir: Type.String({ minLength: 1 }),
+  /**
+   * Profile of the dedicated Chrome `login` opens for the human. Kept apart from
+   * the bridge profile: that one is driven by automation, this one never is,
+   * which is what lets the reCAPTCHA pass.
+   */
+  loginProfileDir: Type.String({ minLength: 1 }),
+  /** Chrome binary for `login`; overrides the per-OS default for the channel. */
+  chromePath: Type.Optional(Type.String({ minLength: 1 })),
+  /** Local DevTools port `login` opens while the human logs in. */
+  debugPort: Type.Integer({ minimum: 1024, maximum: 65535 }),
   /** The only directory `export` may write to. */
   exportDir: Type.String({ minLength: 1 }),
   /** Base64 of 32 bytes. When absent the key file under configDir is used/created. */
@@ -174,6 +184,9 @@ export function loadConfig(env: Env = process.env): Config {
     keyPath: join(configDir, "session.key"),
     dbPath: join(configDir, "cache.db"),
     browserProfileDir: join(configDir, "browser-profile"),
+    loginProfileDir: join(configDir, "login-chrome"),
+    chromePath: readOptional(env, "BTG_CHROME_PATH"),
+    debugPort: readInt(problems, env, "BTG_DEBUG_PORT", 9222, 1024),
     exportDir: expandHome(
       readOptional(env, "BTG_EXPORT_DIR") ?? join(homedir(), "Downloads", "btgpactual-export"),
     ),

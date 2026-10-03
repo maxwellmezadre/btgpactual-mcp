@@ -57,8 +57,8 @@ export const sampleSession = (over: Partial<SessionData> = {}): SessionData => (
 export type FakeScenario = {
   /** Map a requested url to the url the page "lands" on (simulate login redirect). */
   landingFor?: (url: string) => string;
-  /** What the capture hook reports after warm-up. */
-  capture?: CaptureState;
+  /** What the capture hook reports; a function sees the poll number (to script races). */
+  capture?: CaptureState | ((poll: number) => CaptureState);
   /** Investments GET response. */
   api?: (url: string, call: number) => ApiResult;
   /** Banking render readiness. */
@@ -76,6 +76,7 @@ export type FakeBrowser = {
   closed: number;
   apiCalls: number;
   renderPolls: number;
+  addedCookies: number;
 };
 
 /** A browser the tests can fully script, matching evaluate() by its marker. */
@@ -87,11 +88,17 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     closed: 0,
     apiCalls: 0,
     renderPolls: 0,
+    addedCookies: 0,
   };
-  const capture: CaptureState = scenario.capture ?? {
+  const defaultCapture: CaptureState = {
     headers: { authorization_code: "tok-abcdefgh", sessionid: "sid-abcdefgh" },
     account: "123456",
     seen: 1,
+  };
+  let capturePolls = 0;
+  const readCapture = (): CaptureState => {
+    const source = scenario.capture ?? defaultCapture;
+    return typeof source === "function" ? source(capturePolls++) : source;
   };
   let landed = "https://app.btgpactual.com/";
 
@@ -103,7 +110,7 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     },
     url: () => landed,
     evaluate: (script: string) => {
-      if (script.startsWith(READ_CAPTURE_MARKER)) return Promise.resolve(capture);
+      if (script.startsWith(READ_CAPTURE_MARKER)) return Promise.resolve(readCapture());
       if (script.startsWith(API_FETCH_MARKER)) {
         const call = fake.apiCalls++;
         const result = scenario.api
@@ -132,6 +139,10 @@ export function makeFakeBrowser(scenario: FakeScenario = {}): FakeBrowser {
     newPage: () => Promise.resolve(page),
     addInitScript: (script: string) => {
       fake.initScripts.push(script);
+      return Promise.resolve();
+    },
+    addCookies: (cookies) => {
+      fake.addedCookies += cookies.length;
       return Promise.resolve();
     },
     route: (_pattern: string, handler: (route: RouteLike) => unknown) => {

@@ -52,12 +52,15 @@ export const backoffMs = (attempt: number): number =>
   Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_MAX_MS);
 
 /**
- * Worth another try? A failed navigation, an HTTP blip or a banking screen that
- * did not paint are transient. An expired session, a challenge and a changed
+ * Worth another try? A failed navigation (status 0), a 5xx, a 429 or a banking
+ * screen that did not paint are transient. Any other 4xx is a verdict about the
+ * request itself (wrong method, wrong path) and retrying it only burns calls. An expired session, a challenge and a changed
  * layout are verdicts: retrying wastes requests and deepens a block.
  */
 export const isRetryable = (error: unknown): boolean =>
-  error instanceof HttpError || error instanceof BankingRenderError;
+  (error instanceof HttpError &&
+    (error.status === 0 || error.status === 429 || error.status >= 500)) ||
+  error instanceof BankingRenderError;
 
 export function createBrowserClient(opts: ClientOptions, deps: ClientDeps = {}): BrowserClient {
   const sleep =

@@ -34,6 +34,10 @@ describe("browser client", () => {
 
   test("isRetryable only for transient errors", () => {
     expect(isRetryable(new HttpError(0, "x"))).toBe(true);
+    expect(isRetryable(new HttpError(503, "x"))).toBe(true);
+    expect(isRetryable(new HttpError(429, "x"))).toBe(true);
+    expect(isRetryable(new HttpError(405, "x"))).toBe(false);
+    expect(isRetryable(new HttpError(404, "x"))).toBe(false);
     expect(isRetryable(new AuthError("x"))).toBe(false);
     expect(isRetryable(new CaptchaError("x"))).toBe(false);
   });

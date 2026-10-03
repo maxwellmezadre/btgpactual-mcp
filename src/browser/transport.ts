@@ -1,3 +1,4 @@
+import { ACCOUNT_SELECTION, isLoginUrl } from "../btg/routes.js";
 import type { Config } from "../config.js";
 import { AuthError, BankingRenderError, HttpError } from "../core/errors.js";
 import type { Logger } from "../core/logger.js";
@@ -33,10 +34,14 @@ import type {
 // Pacing, retries and the breaker live in client.ts.
 
 const WARMUP_POLL_MS = 400;
+/**
+ * The session headers show up on the very first investments call, but the
+ * account number only appears later, in a per-account url (allocation,
+ * advisor...). Wait this long for it before settling for account-less.
+ */
+const ACCOUNT_GRACE_MS = 6_000;
 const DEFAULT_IDLE_MS = 5 * 60_000;
 const BLOCKED_RESOURCES = new Set(["image", "font", "media"]);
-/** Routes the app redirects to when the session is not accepted. */
-const LOGIN_URL_HINTS = ["/login", "/auth", "/signin", "/authentication"];
 
 export type RenderOptions = {
   /** CSS selector that proves the screen finished rendering its rows. */
@@ -109,11 +114,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
     (idleTimer as { unref?: () => void }).unref?.();
   }
 
-  function landedOnLogin(url: string): boolean {
-    if (!url) return false;
-    if (!url.startsWith(origin)) return true;
-    return LOGIN_URL_HINTS.some((hint) => url.includes(hint));
-  }
+  const landedOnLogin = (url: string): boolean => isLoginUrl(url, origin);
 
   async function ensurePage(): Promise<PageLike> {
     if (page) return page;
@@ -134,6 +135,7 @@ export function createBridge(opts: BridgeOptions): Bridge {
       // headers. Both must be in place before the SPA boots, hence addInitScript.
       await context.addInitScript(restoreScript(data));
       await context.addInitScript(CAPTURE_SCRIPT);
+      if (data.cookies?.length) await context.addCookies?.(data.cookies);
       await context.route?.("**/*", (route: RouteLike) =>
         BLOCKED_RESOURCES.has(route.request().resourceType()) ? route.abort() : route.continue(),
       );
@@ -185,15 +187,26 @@ export function createBridge(opts: BridgeOptions): Bridge {
       throw new HttpError(0, `Falha ao abrir o app BTG: ${(error as Error).message}`);
     }
     const deadline = now() + config.renderTimeoutMs;
+    let accountDeadline: number | null = null;
     for (;;) {
       if (landedOnLogin(current.url())) {
         throw new AuthError("O BTG não aceitou a sessão salva e pediu login.");
       }
+      // A snapshot taken before the account was chosen restores into the
+      // account picker, where the app never calls the investments channel.
+      // Say so at once instead of waiting out the timeout.
+      if (ACCOUNT_SELECTION.test(current.url())) {
+        throw new AuthError("A sessão salva para na seleção de conta (a conta não foi escolhida antes de salvar).");
+      }
       const state = (await current.evaluate(READ_CAPTURE_SCRIPT)) as CaptureState;
       headers = mergeHeaders(headers, state);
       if (state.account && !config.account) account = state.account;
-      if (hasRequiredHeaders(headers)) break;
-      if (now() >= deadline) {
+      if (hasRequiredHeaders(headers)) {
+        if (account) break;
+        accountDeadline ??= now() + ACCOUNT_GRACE_MS;
+        // Account-less is still usable; per-account calls will say what is missing.
+        if (now() >= accountDeadline) break;
+      } else if (now() >= deadline) {
         throw new AuthError(
           "A sessão do BTG não ficou ativa no navegador (o app não emitiu os headers de sessão).",
         );

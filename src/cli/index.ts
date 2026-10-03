@@ -87,11 +87,17 @@ export async function runCli(argv: string[], version: string): Promise<void> {
 
   program
     .command("login")
-    .description("Abre o Chrome para login manual (senha + MFA) e salva a sessão")
-    .option("--fresh", "Apaga o perfil do navegador antes", false)
-    .option("--timeout <s>", "Tempo máximo (segundos)", (v) => Number(v))
+    .description("Abre o Chrome no BTG, espera você logar e salva a sessão (fecha a janela no fim)")
+    .option("--attach", "Não abre janela: copia a sessão de um Chrome já aberto com --remote-debugging-port", false)
+    .option("--endpoint <url>", "Endpoint de depuração no modo --attach (default http://localhost:9222)")
+    .option("--fresh", "Apaga o perfil da janela de login antes", false)
+    .option("--timeout <s>", "Tempo máximo esperando o login, em segundos", (v) => Number(v))
     .action((opts) =>
-      invoke("login", { fresh: opts.fresh, timeout_seconds: opts.timeout }, { json: json() }),
+      invoke(
+        "login",
+        { attach: opts.attach, endpoint: opts.endpoint, fresh: opts.fresh, timeout_seconds: opts.timeout },
+        { json: json() },
+      ),
     );
 
   program

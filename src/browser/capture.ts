@@ -63,8 +63,12 @@ export const CAPTURE_SCRIPT = `${CAPTURE_MARKER}
   const cap = (window.${CAPTURE_GLOBAL} = window.${CAPTURE_GLOBAL} || { headers: {}, account: null, seen: 0 });
   const WANT = ${JSON.stringify(SESSION_HEADER_NAMES)};
   const ACCOUNT_RE = /\\/(?:allocation|destaques|advisor|recommended-portfolio\\/account|indicative\\/quote)\\/(\\d{3,})(?:\\/|$)/;
-  const note = (url, get) => {
-    if (!url || url.indexOf("/investments/api/") === -1) return;
+  // The app calls RELATIVE urls ("investments/api/..."), so resolve against the
+  // page before matching; a raw-string check misses every one of them.
+  const abs = (u) => { try { return new URL(String(u), location.href).href; } catch (e) { return String(u || ""); } };
+  const note = (rawUrl, get) => {
+    const url = abs(rawUrl);
+    if (url.indexOf("/investments/api/") === -1) return;
     cap.seen++;
     for (const name of WANT) {
       const v = get(name) || get(name === "syncid" ? "syncId" : name);
@@ -76,7 +80,7 @@ export const CAPTURE_SCRIPT = `${CAPTURE_MARKER}
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
     try {
-      const url = typeof input === "string" ? input : input && input.url;
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input && input.url;
       const h = new Headers((init && init.headers) || (input && input.headers) || {});
       note(url, (n) => h.get(n));
     } catch (e) {}

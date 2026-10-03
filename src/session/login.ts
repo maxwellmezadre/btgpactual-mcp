@@ -1,166 +1,117 @@
-import { mkdirSync, rmSync } from "node:fs";
-import {
-  CAPTURE_SCRIPT,
-  DUMP_STORAGE_SCRIPT,
-  READ_CAPTURE_SCRIPT,
-} from "../browser/capture.js";
-import { launchWithPlaywright } from "../browser/launch.js";
-import type { BrowserContextLike, CaptureState, LaunchBrowser, PageLike } from "../browser/types.js";
+import { rmSync } from "node:fs";
 import type { Ctx } from "../context.js";
 import { LoginError } from "../core/errors.js";
-import { SESSION_MARKER_KEYS, type SessionData } from "./snapshot.js";
+import { type AttachResult, runAttachLogin } from "./attach.js";
+import { type LaunchChrome, launchChrome, loginChromeArgs, resolveChrome } from "./chrome.js";
 
-// Interactive login. A real window opens and the USER types the password, the
-// MFA code and approves any push. Nothing about that is automated: a bank runs
-// dedicated bot detection on its sign-in, and the whole point of this design is
-// that the second factor stays with the human.
+// `btgpactual login`: opens a dedicated, NON-automated Chrome on the BTG app,
+// waits while the human logs in (password, reCAPTCHA, MFA, account choice),
+// snapshots the session over CDP, and closes that Chrome again. The DevTools
+// port is therefore open only for the length of the login. The session
+// survives the window closing (verified live), so nothing is lost.
 //
-// Success is detected by the thing the tool actually needs, not by a URL: the
-// app left the sign-in screen, the session markers are in sessionStorage, and
-// the app fired at least one investments request (so the capture hook holds the
-// live headers). That survives the MFA interstitials in one shot.
+// If something already listens on the port (a Chrome the user opened by hand
+// with --remote-debugging-port), it is reused and left open: we did not start
+// it, so we do not close it.
 
 export const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60_000;
-const POLL_MS = 1_500;
+const PORT_TIMEOUT_MS = 20_000;
+const POLL_MS = 2_000;
 const REPORT_EVERY_MS = 30_000;
-const LOGIN_URL_HINTS = ["/login", "/auth", "/signin", "/authentication"];
 
 export type LoginOptions = {
   timeoutMs?: number;
-  /** Wipe the automation profile first, so BTG sees a brand-new device. */
+  /** Wipe the dedicated login profile first (only when this run starts Chrome). */
   fresh?: boolean;
   report?: (message: string) => void;
 };
 
-export type LoginDeps = { launch?: LaunchBrowser; sleep?: (ms: number) => Promise<void> };
-
-export type LoginResult = {
-  markers: string[];
-  account: string | null;
-  storageKeys: number;
-  userAgent: string;
-  savedAt: string;
+export type LoginDeps = {
+  /** Does a DevTools endpoint answer at this address? */
+  probe?: (endpoint: string) => Promise<boolean>;
+  launch?: LaunchChrome;
+  resolveBinary?: () => string | null;
+  attach?: (ctx: Ctx, endpoint: string) => Promise<AttachResult>;
+  sleep?: (ms: number) => Promise<void>;
 };
 
-type Dump = { storage: Record<string, string>; local: Record<string, string> };
+export type LoginResult = AttachResult & { browser: "launched" | "reused" };
 
-export async function runLogin(
-  ctx: Ctx,
-  opts: LoginOptions = {},
-  deps: LoginDeps = {},
-): Promise<LoginResult> {
-  const report = opts.report ?? ((message: string) => ctx.log.info(message));
-  const { config } = ctx;
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS;
-  const origin = new URL(config.baseUrl).origin;
-
-  if (opts.fresh) rmSync(config.browserProfileDir, { recursive: true, force: true });
-  mkdirSync(config.browserProfileDir, { recursive: true, mode: 0o700 });
-
-  let context: BrowserContextLike;
+const probeDevtools = async (endpoint: string): Promise<boolean> => {
   try {
-    context = await (deps.launch ?? launchWithPlaywright)({
-      channel: config.browserChannel,
-      profileDir: config.browserProfileDir,
-      headless: false, // always a real window: this is where the human works.
-      locale: config.locale,
-      timezoneId: config.timezone,
-    });
-  } catch (error) {
-    throw new LoginError(
-      `Não consegui abrir o navegador (${config.browserChannel}): ${(error as Error).message}\n` +
-        "Instale o Google Chrome, ou rode `bunx playwright install chromium` e use BTG_BROWSER_CHANNEL=chromium.",
-    );
+    const response = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1_000) });
+    return response.ok;
+  } catch {
+    return false;
   }
-
-  try {
-    // The capture hook must be in place before the app boots, so it records the
-    // session headers as the user finishes logging in.
-    await context.addInitScript(CAPTURE_SCRIPT);
-    const page = await context.newPage();
-    await page.goto(`${config.baseUrl}/`, {
-      waitUntil: "domcontentloaded",
-      timeout: config.pageTimeoutMs,
-    });
-    report(
-      "Faça login na janela do navegador (senha, verificação em duas etapas, aprovação no app). " +
-        "Estou esperando a sessão ficar ativa.",
-    );
-
-    const { dump, capture } = await waitForSession(
-      ctx,
-      page,
-      origin,
-      timeoutMs,
-      report,
-      deps.sleep ?? sleep,
-    );
-
-    const userAgent = String(await page.evaluate("navigator.userAgent"));
-    const account = capture.account ?? undefined;
-    const savedAt = ctx.now();
-    const data: SessionData = {
-      version: 1,
-      origin,
-      storage: dump.storage,
-      local: dump.local,
-      userAgent,
-      savedAt,
-      ...(account ? { account } : {}),
-    };
-    ctx.session.save(data);
-
-    const markers = SESSION_MARKER_KEYS.filter((key) => dump.storage[key]);
-    report(`Sessão salva (${Object.keys(dump.storage).length} chaves, marcadores: ${markers.join(", ")}).`);
-    return {
-      markers,
-      account: account ?? null,
-      storageKeys: Object.keys(dump.storage).length,
-      userAgent,
-      savedAt: new Date(savedAt).toISOString(),
-    };
-  } finally {
-    await context.close().catch(() => undefined);
-  }
-}
-
-/**
- * Polls until the app left the sign-in screen, the session markers are in
- * sessionStorage AND the capture hook saw an investments request. The marker
- * check alone is not enough: a half-finished login can seed some keys, so we
- * also require the app to have actually called its API as the logged-in user.
- */
-async function waitForSession(
-  ctx: Ctx,
-  page: PageLike,
-  origin: string,
-  timeoutMs: number,
-  report: (message: string) => void,
-  wait: (ms: number) => Promise<void>,
-): Promise<{ dump: Dump; capture: CaptureState }> {
-  const deadline = ctx.now() + timeoutMs;
-  let lastReport = ctx.now();
-
-  for (;;) {
-    const url = page.url();
-    const onLogin = !url.startsWith(origin) || LOGIN_URL_HINTS.some((hint) => url.includes(hint));
-    if (!onLogin) {
-      const dump = (await page.evaluate(DUMP_STORAGE_SCRIPT).catch(() => null)) as Dump | null;
-      const capture = (await page.evaluate(READ_CAPTURE_SCRIPT).catch(() => null)) as CaptureState | null;
-      const hasMarkers = dump ? SESSION_MARKER_KEYS.some((key) => dump.storage[key]) : false;
-      if (dump && capture && hasMarkers && capture.seen > 0) return { dump, capture };
-    }
-    if (ctx.now() >= deadline) {
-      throw new LoginError(
-        `Login não concluído em ${Math.round(timeoutMs / 1000)}s. Rode \`btgpactual login\` de novo.`,
-      );
-    }
-    if (ctx.now() - lastReport >= REPORT_EVERY_MS) {
-      lastReport = ctx.now();
-      report("Ainda esperando a sessão ficar ativa…");
-    }
-    await wait(POLL_MS);
-  }
-}
+};
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function runLogin(ctx: Ctx, opts: LoginOptions = {}, deps: LoginDeps = {}): Promise<LoginResult> {
+  const { config } = ctx;
+  const report = opts.report ?? ((message: string) => ctx.log.info(message));
+  const wait = deps.sleep ?? sleep;
+  const probe = deps.probe ?? probeDevtools;
+  const attach = deps.attach ?? ((c: Ctx, endpoint: string) => runAttachLogin(c, { endpoint }));
+  const endpoint = `http://127.0.0.1:${config.debugPort}`;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS;
+
+  let launched: ReturnType<LaunchChrome> | null = null;
+  if (!(await probe(endpoint))) {
+    const binary = (deps.resolveBinary ?? (() => resolveChrome(config.browserChannel, config.chromePath)))();
+    if (!binary) {
+      throw new LoginError(
+        `Não achei o ${config.browserChannel} instalado. Instale o Google Chrome ou aponte BTG_CHROME_PATH para o executável.`,
+      );
+    }
+    if (opts.fresh) rmSync(config.loginProfileDir, { recursive: true, force: true });
+    launched = (deps.launch ?? launchChrome)(
+      binary,
+      loginChromeArgs({ port: config.debugPort, profileDir: config.loginProfileDir, url: `${config.baseUrl}/` }),
+    );
+    const portDeadline = ctx.now() + PORT_TIMEOUT_MS;
+    while (!(await probe(endpoint))) {
+      if (ctx.now() >= portDeadline) {
+        launched.close();
+        throw new LoginError(
+          "O Chrome abriu mas a porta de depuração não respondeu. Se já havia uma janela do Chrome de login aberta, feche-a e rode de novo.",
+        );
+      }
+      await wait(500);
+    }
+  }
+
+  try {
+    report(
+      "Abri o Chrome no app do BTG. Faça login (senha, \"não sou robô\", verificação em duas etapas), " +
+        "escolha a conta e espere a tela inicial. Eu detecto sozinho e salvo a sessão.",
+    );
+    const deadline = ctx.now() + timeoutMs;
+    let lastReport = ctx.now();
+    let lastState = "";
+    for (;;) {
+      try {
+        const result = await attach(ctx, endpoint);
+        return { ...result, browser: launched ? "launched" : "reused" };
+      } catch (error) {
+        // "Not there yet" (login screen, account choice, no tab) is a LoginError:
+        // keep waiting. Anything else (disk, key) is a real failure.
+        if (!(error instanceof LoginError)) throw error;
+        lastState = error.message;
+      }
+      if (ctx.now() >= deadline) {
+        throw new LoginError(
+          `Login não concluído em ${Math.round(timeoutMs / 1000)}s. Último estado: ${lastState} Rode \`btgpactual login\` de novo.`,
+        );
+      }
+      if (ctx.now() - lastReport >= REPORT_EVERY_MS) {
+        lastReport = ctx.now();
+        report(`Ainda esperando: ${lastState}`);
+      }
+      await wait(POLL_MS);
+    }
+  } finally {
+    launched?.close();
+  }
+}

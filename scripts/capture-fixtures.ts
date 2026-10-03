@@ -2,7 +2,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AGGREGATOR,
   BALANCE_DETAIL,
   BALANCE_SUMMARY,
   FUTURE,
@@ -45,7 +44,7 @@ async function main(): Promise<void> {
     { name: "summary-balance", kind: "investments", path: BALANCE_SUMMARY },
     { name: "balance-detail", kind: "investments", path: BALANCE_DETAIL },
     { name: "future", kind: "investments", path: FUTURE },
-    { name: "aggregator", kind: "investments", path: AGGREGATOR },
+    // The aggregator is a POST with a body the app builds; captured in Phase 2.
     { name: "account-statement-30", kind: "investments", path: accountStatement(30) },
   ];
   if (account) {
@@ -70,7 +69,7 @@ async function main(): Promise<void> {
         console.error(`[investments] ${item.name}: HTTP ${res.status}, ${res.body.length} bytes`);
         if (write) {
           const file = `investments/${item.name}.json`;
-          writeFileSync(join(outDir, file.replace("/", "-")), res.body);
+          writeFileSync(join(outDir, file.replace("/", "-")), res.body, { mode: 0o600 });
           index[item.name] = file;
         }
       } else {
@@ -78,7 +77,7 @@ async function main(): Promise<void> {
         console.error(`[banking] ${item.name}: ${res.html.length} bytes (${res.title})`);
         if (write) {
           const file = `banking/${item.name}.html`;
-          writeFileSync(join(outDir, file.replace("/", "-")), res.html);
+          writeFileSync(join(outDir, file.replace("/", "-")), res.html, { mode: 0o600 });
           index[item.name] = file;
         }
       }
@@ -86,7 +85,7 @@ async function main(): Promise<void> {
       console.error(`[erro] ${item.name}: ${(error as Error).message}`);
     }
   }
-  if (write) writeFileSync(join(outDir, "index.json"), JSON.stringify(index, null, 2));
+  if (write) writeFileSync(join(outDir, "index.json"), JSON.stringify(index, null, 2), { mode: 0o600 });
   ctx.dispose();
   console.error(write ? `Capturas em ${outDir}` : "Dry-run: nada gravado. Use --write para persistir.");
 }

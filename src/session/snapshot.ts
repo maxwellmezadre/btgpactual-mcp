@@ -1,16 +1,17 @@
 import { type Static, Type } from "@sinclair/typebox";
 
-// The BTG session does NOT live in cookies. The app keeps it in sessionStorage
-// under obfuscated keys, and sessionStorage is exactly the one web storage a
-// persistent Chrome profile does not keep across restarts. So the session we
-// persist is a SNAPSHOT of that storage, captured at login, which the headless
-// bridge restores (via addInitScript) before the app's own JavaScript runs.
+// The BTG session does NOT live in cookies alone. The app keeps its live token
+// in sessionStorage under obfuscated keys, and sessionStorage is exactly the
+// one web storage a persistent Chrome profile does not keep across restarts. So
+// the session we persist is a SNAPSHOT: sessionStorage + localStorage + cookies
+// + UA, captured at login. The headless bridge restores the web storage (via
+// addInitScript) and injects the cookies before the app's own JavaScript runs,
+// so it wakes up authenticated in a fresh context.
 //
-// We snapshot the WHOLE sessionStorage (and localStorage, where the refresh
-// machinery may live) instead of guessing which keys matter: the app owns the
-// shape, and restoring everything is what makes it wake up authenticated.
+// We snapshot the WHOLE storages instead of guessing which keys matter: the app
+// owns the shape, and restoring everything is what makes it wake up logged in.
 
-/** The obfuscated keys the app is known to use. Their presence means "logged in". */
+/** The obfuscated sessionStorage keys the app is known to use. */
 export const SESSION_MARKER_KEYS = [
   "_a",
   "_s",
@@ -22,6 +23,21 @@ export const SESSION_MARKER_KEYS = [
   "syncId",
 ] as const;
 
+export const CookieSchema = Type.Object({
+  name: Type.String(),
+  value: Type.String(),
+  domain: Type.String(),
+  path: Type.String(),
+  expires: Type.Number(),
+  httpOnly: Type.Boolean(),
+  secure: Type.Boolean(),
+  sameSite: Type.Optional(
+    Type.Union([Type.Literal("Strict"), Type.Literal("Lax"), Type.Literal("None")]),
+  ),
+});
+
+export type CookieRecord = Static<typeof CookieSchema>;
+
 export const SnapshotSchema = Type.Object({
   version: Type.Literal(1),
   /** The app origin these storages belong to, e.g. https://app.btgpactual.com. */
@@ -30,11 +46,11 @@ export const SnapshotSchema = Type.Object({
   storage: Type.Record(Type.String(), Type.String()),
   /** Full localStorage dump, when captured (refresh token, device id). */
   local: Type.Optional(Type.Record(Type.String(), Type.String())),
+  /** Cookies for the app origin, when captured via an attached real browser. */
+  cookies: Type.Optional(Type.Array(CookieSchema)),
   /**
    * The User-Agent of the browser that minted this session. Replayed verbatim
-   * by the headless bridge: a fingerprint that shifts between runs on one
-   * session is a bot signal, and headless Chrome would otherwise announce
-   * itself as "HeadlessChrome".
+   * by the headless bridge so the fingerprint does not shift between runs.
    */
   userAgent: Type.String(),
   /** Unix ms of the last save (login or token refresh mirrored back). */
@@ -62,9 +78,13 @@ export function presentMarkers(data: SessionData): string[] {
 }
 
 /**
- * Every storage value is a secret for log redaction: the access token and the
- * device fingerprint are in there, opaque or not.
+ * Every storage and cookie value is a secret for log redaction: the access
+ * token, the device fingerprint and the auth cookies are in there.
  */
 export function sessionSecrets(data: SessionData): string[] {
-  return [...Object.values(data.storage), ...Object.values(data.local ?? {})];
+  return [
+    ...Object.values(data.storage),
+    ...Object.values(data.local ?? {}),
+    ...(data.cookies ?? []).map((cookie) => cookie.value),
+  ];
 }

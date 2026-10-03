@@ -17,10 +17,14 @@ const baseConfig = {
   timezone: "America/Sao_Paulo",
 };
 
-function wire(scenario: FakeScenario = {}, over: Partial<typeof baseConfig> = {}) {
+function wire(
+  scenario: FakeScenario = {},
+  over: Partial<typeof baseConfig> = {},
+  snapshot = sampleSession(),
+) {
   const clock = fakeClock();
   const fake = makeFakeBrowser(scenario);
-  const session = createMemorySessionStore(sampleSession());
+  const session = createMemorySessionStore(snapshot);
   const bridge = createBridge({
     session,
     launch: fake.launch,
@@ -62,6 +66,13 @@ describe("bridge", () => {
     await expect(bridge.apiGet("/investments/api/x")).rejects.toThrow(AuthError);
   });
 
+  test("restored session parked on the account picker -> AuthError at once", async () => {
+    const { bridge, clock } = wire({ landingFor: () => "https://app.btgpactual.com/selecao-de-conta" });
+    const start = clock.now();
+    await expect(bridge.apiGet("/investments/api/x")).rejects.toThrow(/seleção de conta/);
+    expect(clock.now() - start).toBeLessThan(1_000); // no waiting out the 2s render timeout
+  });
+
   test("apiGet 401 -> AuthError", async () => {
     const { bridge } = wire({ api: (url) => ({ status: 401, url, body: "" }) });
     await expect(bridge.apiGet("/investments/api/x")).rejects.toThrow(AuthError);
@@ -89,10 +100,54 @@ describe("bridge", () => {
     );
   });
 
+  test("waits for the account when headers arrive first", async () => {
+    const headers = { authorization_code: "tok-abcdefgh", sessionid: "sid-abcdefgh" };
+    const { bridge } = wire({
+      // headers on poll 0, account only from poll 3 on (the allocation call comes later)
+      capture: (poll) => ({ headers, account: poll >= 3 ? "777777" : null, seen: poll + 1 }),
+    }, {}, sampleSession({ account: undefined }));
+    await bridge.apiGet("/investments/api/x");
+    expect(bridge.account()).toBe("777777");
+  });
+
+  test("settles account-less after the grace period", async () => {
+    const headers = { authorization_code: "tok-abcdefgh", sessionid: "sid-abcdefgh" };
+    const { bridge } = wire(
+      { capture: () => ({ headers, account: null, seen: 1 }) },
+      {},
+      sampleSession({ account: undefined }),
+    );
+    const result = await bridge.apiGet("/investments/api/x");
+    expect(result.status).toBe(200);
+  });
+
   test("account override from config wins over captured", async () => {
     const { bridge } = wire({}, { account: "999999" });
     await bridge.apiGet("/investments/api/x");
     expect(bridge.account()).toBe("999999");
+  });
+
+  test("injects captured cookies into the bridge context", async () => {
+    const clock = fakeClock();
+    const fake = makeFakeBrowser();
+    const session = createMemorySessionStore(
+      sampleSession({
+        cookies: [
+          { name: "sessionid", value: "ck-abcdefgh", domain: "app.btgpactual.com", path: "/", expires: -1, httpOnly: true, secure: true },
+        ],
+      }),
+    );
+    const bridge = createBridge({
+      session,
+      launch: fake.launch,
+      config: baseConfig,
+      log: silentLogger(),
+      sleep: clock.sleep,
+      now: clock.now,
+      idleMs: 0,
+    });
+    await bridge.apiGet("/investments/api/x");
+    expect(fake.addedCookies).toBe(1);
   });
 
   test("close is idempotent", async () => {
