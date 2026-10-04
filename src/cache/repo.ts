@@ -15,7 +15,7 @@ import type {
 // tools turn cents into reais at their edge.
 
 /** Bump when a parser changes what it extracts; `sync --reparse` rebuilds from raw. */
-export const PARSER_VERSION = 2;
+export const PARSER_VERSION = 3;
 
 export type BaseSnapshotKind =
   | "home"

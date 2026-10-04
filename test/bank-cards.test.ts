@@ -55,7 +55,8 @@ describe("cards screen", () => {
       ["LOJA GAMA", "installment", -3000],
       ["Pagamento recebido", "payment", 150000],
       ["LOJA DELTA", "installment", -2000],
-      ["LOJA EPSILON", "international", -20000],
+      // Shown only in its own currency (US$): unpriced here, reais come from the full invoice page.
+      ["LOJA EPSILON", "international", null],
       ["LOJA ZETA", "cancelled", 1000],
     ]);
     expect(screen.transactions.every((t) => t.invoiceMonth === "2026-10")).toBe(true);

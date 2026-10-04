@@ -12,7 +12,8 @@ import { parseFullInvoice, parseInvoiceOptions } from "../btg/banking/invoice-de
 import { CARDS, FULL_INVOICE } from "../btg/banking/selectors.js";
 import type { BrowserClient } from "../browser/client.js";
 import { ParseError } from "../core/errors.js";
-import type { CardsScreen } from "../domain/types.js";
+import { stripAccents } from "../domain/dates.js";
+import type { CardsScreen, InvoiceTransaction } from "../domain/types.js";
 import type { CacheRepo } from "./repo.js";
 
 // Invoices the cards chart no longer shows (it keeps about six months) live on
@@ -41,6 +42,34 @@ export function chartMonths(repo: CacheRepo): Set<string> {
   return new Set(repo.getSnapshot<CardsScreen>("cards_screen")?.data.months.map((m) => m.month) ?? []);
 }
 
+const sameMerchant = (a: string, b: string) => stripAccents(a).toLowerCase() === stripAccents(b).toLowerCase();
+
+/**
+ * The timeline shows an international purchase only in its own currency
+ * ("US$ 22,75"), so it arrives unpriced. The month's full invoice page has the
+ * reais charged: copy them over, matching day, merchant and installment. Each
+ * full line is used once, so same-day repeats pair in order. No match stays
+ * null, never a guess.
+ */
+export function priceForeignLines(timeline: InvoiceTransaction[], full: InvoiceTransaction[]): InvoiceTransaction[] {
+  const pool = full.filter((line) => line.amountCents !== null);
+  return timeline.map((line) => {
+    if (line.amountCents !== null) return line;
+    const i = pool.findIndex(
+      (f) => f.date === line.date && f.installmentN === line.installmentN && sameMerchant(f.merchant, line.merchant),
+    );
+    if (i < 0) return line;
+    const [match] = pool.splice(i, 1);
+    return { ...line, amountCents: match?.amountCents ?? null };
+  });
+}
+
+/** The lines of a month's stored full invoice page, or none when it was never read. */
+export function storedFullLines(repo: CacheRepo, month: string): InvoiceTransaction[] {
+  const raw = repo.getSnapshot<unknown>(`invoice_full:${month}`)?.raw;
+  return raw ? (JSON.parse(raw) as FullInvoiceRaw).pages.flatMap((html) => parseFullInvoice(html).transactions) : [];
+}
+
 /** One ingest for live and `--reparse`. The page must be the month asked for: never file lines under another. */
 export function ingestFullInvoice(repo: CacheRepo, raw: FullInvoiceRaw, chart: Set<string>, expected?: string): string {
   const pages = raw.pages.map(parseFullInvoice);
@@ -54,7 +83,12 @@ export function ingestFullInvoice(repo: CacheRepo, raw: FullInvoiceRaw, chart: S
   const { transactions: _lines, ...header } = first;
   repo.putSnapshot(`invoice_full:${month}`, { ...header, lines: lines.length, pages: pages.length }, JSON.stringify(raw));
   repo.upsertInvoiceDetails({ ...first, month }, raw.statementId);
-  if (chart.has(month)) return `${first.statusLabel ?? "?"}: datas e valores (lançamentos vêm do gráfico)`;
+  if (chart.has(month)) {
+    // The timeline's lines stay; this page only prices the international ones.
+    const timeline = repo.getSnapshot<CardsScreen>(`cards_month:${month}`)?.data.transactions;
+    if (timeline?.some((line) => line.amountCents === null)) repo.replaceInvoiceLines(month, priceForeignLines(timeline, lines));
+    return `${first.statusLabel ?? "?"}: datas e valores (lançamentos vêm do gráfico)`;
+  }
   repo.replaceInvoiceLines(month, lines);
   return `${first.statusLabel ?? "?"}: ${lines.length} lançamento(s)${truncated}`;
 }

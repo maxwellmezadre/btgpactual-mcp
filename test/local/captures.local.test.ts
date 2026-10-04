@@ -60,6 +60,7 @@ describe.skipIf(!has("home"))("real captures: investments", () => {
 });
 
 import { parseCardsScreen } from "../../src/btg/banking/cards.js";
+import { priceForeignLines } from "../../src/cache/history.js";
 import { parseStatementScreen } from "../../src/btg/banking/statement.js";
 
 const hasHtml = (name: string) => existsSync(join(DIR, `banking-${name}.html`));
@@ -94,7 +95,9 @@ describe.skipIf(!hasHtml("cartoes"))("real captures: cards screen", () => {
     const screen = get();
     const today = new Date().toISOString().slice(0, 10);
     for (const t of screen.transactions) {
-      if (["purchase", "installment", "international"].includes(t.kind)) expect(t.amountCents ?? 0).toBeLessThan(0);
+      // International lines show only their own currency here: unpriced until the full invoice page prices them.
+      if (t.amountCents === null) expect(t.kind).toBe("international");
+      else if (["purchase", "installment", "international"].includes(t.kind)) expect(t.amountCents).toBeLessThan(0);
       if (t.kind === "payment") expect(t.amountCents ?? 0).toBeGreaterThan(0);
       expect((t.date ?? "") <= today).toBe(true);
     }
@@ -145,6 +148,17 @@ describe.skipIf(fullPages.length === 0)("real captures: full invoice pages", () 
       expect(page.transactions.length).toBe((html.match(/<btg-invoice-transaction-detail/g) ?? []).length);
       expect(page.page).toBe(Number(/-p(\d+)\.html$/.exec(file)?.[1]));
     }
+  });
+
+  test.skipIf(!hasHtml("cartoes"))("the month's full page prices every international timeline line in reais", () => {
+    const screen = parseCardsScreen(loadHtml("cartoes"), new Date());
+    const month = screen.timelineMonth as string;
+    const files = fullPages.filter((f) => f.startsWith(month)).sort();
+    const full = files.flatMap((f) => parseFullInvoice(readFileSync(join(FULL_DIR, f), "utf8")).transactions);
+    const foreign = priceForeignLines(screen.transactions, full).filter((t) => t.kind === "international");
+    expect(files.length).toBeGreaterThan(0);
+    expect(foreign.length).toBeGreaterThan(0);
+    for (const t of foreign) expect(t.amountCents ?? 0).toBeLessThan(0);
   });
 
   test.skipIf(!existsSync(join(FULL_DIR, "picker-2026.html")))("the picker search lists the year's months", () => {

@@ -44,6 +44,8 @@ export function fullInvoiceHtml(month: string, opts: { nextPage?: boolean } = {}
     html = html.replace(/<div class="invoice-details__divider invoice-details__amount-divider">[\s\S]*?<\/strong><\/div><\/div>\s*<\/div>/, "</div>");
     if (month === "2026-10") html = html.replace("R$ 1.234,56", "R$ 250,00");
   }
+  // The closed month's full page lists the timeline's international line, in reais.
+  if (month === "2026-10") html = html.replaceAll("Servidor Exemplo", "LOJA EPSILON").replace("20/07/2026", "29/12/2025");
   if (opts.nextPage) {
     html = html.replace(
       'data-testid="pagination-next-button" class="orq-pagination__list-item orq-pagination__list-item--disabled"',

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { priceForeignLines } from "../src/cache/history.js";
 import { clickOrder, runSync } from "../src/cache/sync.js";
 import { AuthError, BankingRenderError } from "../src/core/errors.js";
 import { HTML_BY_ROUTE, wireSync as wire } from "./wire.js";
@@ -184,13 +185,44 @@ describe("invoice history (full invoice page)", () => {
   });
 });
 
+describe("international lines", () => {
+  const epsilon = (ctx: ReturnType<typeof wire>["ctx"]) =>
+    ctx.cache().listInvoiceLines({ month: "2026-10", query: "epsilon" }).rows[0]?.amount_cents;
+
+  test("the timeline shows only US$: the reais come from the month's full invoice page", async () => {
+    const { ctx } = wire();
+    await runSync(ctx);
+    expect(epsilon(ctx)).toBe(-9990);
+  });
+
+  test("a later cards phase prices them from the stored full page, before history runs", async () => {
+    const { ctx } = wire();
+    await runSync(ctx);
+    const report = await runSync(ctx, { parts: "banking", budgetMs: 0 });
+    expect(report.next).toBe("history");
+    expect(epsilon(ctx)).toBe(-9990);
+  });
+
+  test("same day and merchant pair in order; no match stays unpriced", () => {
+    const line = (merchant: string, amountCents: number | null) => ({
+      invoiceMonth: "2026-10", position: 0, date: "2026-09-25", merchant, description: null, amountCents,
+      installmentN: null, installmentTotal: null, holder: "titular" as const, holderName: null, kind: "international" as const,
+    });
+    const priced = priceForeignLines(
+      [line("Contabo Payment", null), line("Contabo Payment", null), line("Outra Loja", null), line("Loja", -100)],
+      [line("contabo payment", -12490), line("Contabo Payment", -500), line("Loja", -999)],
+    );
+    expect(priced.map((l) => l.amountCents)).toEqual([-12490, -500, null, -100]);
+  });
+});
+
 describe("cache queries", () => {
   test("spending by holder: charges and refunds, payments excluded", async () => {
     const { ctx } = wire();
     await runSync(ctx);
     const rows = ctx.cache().spending("holder", {});
     expect(rows).toEqual([
-      { key: "titular", count: 4, charges: 30000, refunds: 1000 },
+      { key: "titular", count: 4, charges: 19990, refunds: 1000 },
       { key: "PESSOA EXEMPLO", count: 1, charges: 10000, refunds: 0 },
     ]);
   });

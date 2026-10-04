@@ -10,7 +10,7 @@ import { BALANCE_DETAIL, FUTURE, HOME, accountStatement, allocationSummary } fro
 import type { Ctx } from "../context.js";
 import { AuthError, CaptchaError, ParseError } from "../core/errors.js";
 import type { InvoiceMonth } from "../domain/types.js";
-import { reparseFullInvoices, runHistoryPhase } from "./history.js";
+import { priceForeignLines, reparseFullInvoices, runHistoryPhase, storedFullLines } from "./history.js";
 import type { BaseSnapshotKind, CacheRepo, SnapshotKind } from "./repo.js";
 
 // One sync = the investments channel (a handful of JSON replays, seconds) plus
@@ -105,7 +105,7 @@ function ingestCardsMonth(repo: CacheRepo, html: string, now: Date, month: strin
     throw new ParseError(`A tela mostrou a fatura ${screen.timelineMonth ?? "?"} em vez de ${month}.`);
   }
   repo.putSnapshot(`cards_month:${month}`, screen, html);
-  repo.replaceInvoiceLines(month, screen.transactions);
+  repo.replaceInvoiceLines(month, priceForeignLines(screen.transactions, storedFullLines(repo, month)));
   repo.replaceInvoiceHolders(month, screen.holderTotals);
   return `${screen.transactions.length} lançamento(s)`;
 }

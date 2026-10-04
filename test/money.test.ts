@@ -14,6 +14,12 @@ describe("money", () => {
     expect(parseBrl("em processamento")).toBeNull();
     expect(parseBrl(null)).toBeNull();
   });
+  test("another currency is not reais: null, never its digits as BRL", () => {
+    expect(parseBrl("- US$ 22,75")).toBeNull();
+    expect(parseBrl("€ 10,00")).toBeNull();
+    expect(parseBrl("USD 10,00")).toBeNull();
+    expect(parseBrl("-R$ 124,90")).toBe(-12490);
+  });
   test("debit markers make it negative", () => {
     expect(parseBrl("R$ 50,00 D")).toBe(-5000);
   });

@@ -138,7 +138,9 @@ export function parseCardsScreen(html: string, now: Date): CardsScreen {
   const warnings: string[] = [];
   const undated = transactions.filter((t) => t.date === null).length;
   if (undated > 0) warnings.push(`${undated} lançamento(s) sem data reconhecida`);
-  const unpriced = transactions.filter((t) => t.amountCents === null).length;
+  // International lines show only their own currency here; the sync prices
+  // them from the full invoice page (cache/history.ts), so they are expected.
+  const unpriced = transactions.filter((t) => t.amountCents === null && t.kind !== "international").length;
   if (unpriced > 0) warnings.push(`${unpriced} lançamento(s) sem valor reconhecido`);
 
   return {

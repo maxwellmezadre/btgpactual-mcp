@@ -3,17 +3,22 @@
 // statement and invoice totals depend on.
 
 const BRL = /-?\s*R?\$?\s*[\d.]+,\d{2}/;
+/** Another currency's symbol or code: "US$ 22,75", "€ 10,00", "USD 10,00". "R$" is not one. */
+const FOREIGN = /(?<![A-Za-z])(?!R\$)[A-Za-z]{1,3}\$|[€£¥]|\b(?:USD|EUR|GBP)\b/i;
 
 /**
  * Parses a BRL string to signed integer cents. `"R$ 1.234,56" -> 123456`,
  * `"-R$ 0,96" -> -96`, `"R$ 0,00"`/`"Grátis"`/`"Isento" -> 0`. A string that
- * does not look like money -> `null` (never 0, so "unknown" never reads as
- * "free"). Leading/trailing sign and a trailing `C`/`D` marker are honoured.
+ * does not look like money, or is in another currency (the cards timeline
+ * shows an international purchase as "US$ 22,75"), -> `null` (never 0, so
+ * "unknown" never reads as "free", and never the foreign digits as reais).
+ * Leading/trailing sign and a trailing `C`/`D` marker are honoured.
  */
 export function parseBrl(input: string | null | undefined): number | null {
   if (input == null) return null;
   const text = input.trim();
   if (/^(grátis|gratis|isento)$/i.test(text)) return 0;
+  if (FOREIGN.test(text)) return null;
   const match = BRL.exec(text);
   if (!match) return null;
   const digits = match[0].replace(/[^\d,]/g, "").replace(",", "");

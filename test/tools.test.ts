@@ -60,7 +60,7 @@ describe("read tools after a sync", () => {
   test("invoice: selected month by default, line summary", async () => {
     const r = await call(ctx, "invoice");
     expect(r).toMatchObject({ month: "2026-10", status: "closed", total: 250 });
-    expect(r.lines).toEqual({ count: 7, purchases: 400, installments: 2, refunds: 10, paymentsReceived: 1500 });
+    expect(r.lines).toEqual({ count: 7, purchases: 299.9, installments: 2, refunds: 10, paymentsReceived: 1500 });
     expect(r.knownInvoices).toHaveLength(4);
     expect(r.spendingByHolder).toEqual([
       { holder: "titular", name: null, total: 300 },
@@ -111,7 +111,7 @@ describe("read tools after a sync", () => {
 
   test("spending_summary by holder: payments never count", async () => {
     const r = await call(ctx, "spending_summary", { group_by: "holder" });
-    expect(r.totals).toEqual({ purchases: 5, spent: 400, refunds: 10, net: 390 });
+    expect(r.totals).toEqual({ purchases: 5, spent: 299.9, refunds: 10, net: 289.9 });
   });
 
   test("export writes 0600 inside the export dir and refuses escapes", async () => {

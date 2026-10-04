@@ -52,6 +52,12 @@ Todas as mudanças relevantes deste projeto ficam aqui. O formato segue o
 
 ### Fixed
 
+- Compra internacional nos meses do gráfico de faturas entrava com o valor em
+  dólar lido como real (Contabo "US$ 22,75" virava R$ 22,75 em vez de
+  R$ 124,90), e somas de fatura e `spending_summary` saíam menores. A
+  timeline só mostra a moeda original: `parseBrl` agora recusa outra moeda e
+  o valor em reais vem da página "Fatura completa" do mês. Rode `btgpactual
+  sync --reparse` para corrigir o cache sem rede.
 - O navegador de leitura reaproveitava os cabeçalhos de uma sessão anterior
   depois de reiniciar: o warm-up "terminava" na hora e a primeira chamada
   dava 401 mesmo com uma sessão nova salva.
